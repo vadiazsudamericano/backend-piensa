@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>ESTUDIANTE: Botón de Batalla</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 50px; background-color: #e6f7ff; text-align: center; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 40px; border-radius: 15px; border-top: 5px solid #0056b3; }
+        h1 { color: #0056b3; }
+        #pressButton { padding: 40px; width: 80%; height: 200px; font-size: 2.5em; background-color: #28a745; color: white; border: none; border-radius: 10px; cursor: pointer; }
+        #pressButton:hover:not(:disabled) { background-color: #218838; }
+        #pressButton:disabled { background-color: #ccc; cursor: not-allowed; }
+        #statusMessage { margin-top: 20px; font-size: 1.2em; font-weight: bold; }
+        .log-container { text-align: left; margin-top: 30px; border-top: 1px solid #eee; padding-top: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧑‍🎓 Soy un Estudiante</h1>
+        <p>Mis datos de prueba: **Jugador Estudiante**</p>
+        
+        <button id="pressButton" disabled>PRESIONAR</button>
+        
+        <div id="statusMessage">Esperando que inicie la ronda...</div>
+
+        <div class="log-container">
+            <h3>Notificaciones:</h3>
+            <pre id="log"></pre>
+        </div>
+    </div>
+
+    <script>
+        const socketUrl = 'http://localhost:3000'; 
+        let socket;
+        const pressButton = document.getElementById('pressButton');
+        const statusMessage = document.getElementById('statusMessage');
+        const logElement = document.getElementById('log');
+
+        const TEST_STUDENT_ID = 'student-456-test';
+        const TEST_PLAYER_NAME = 'Jugador Estudiante';
+        const TEST_SUBJECT_ID = 'subject-xyz-456';
+
+        function log(message, className = 'info') {
+            const entry = document.createElement('div');
+            entry.className = className;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logElement.prepend(entry);
+        }
+        function updateStatus(message, className = 'info') {
+            statusMessage.textContent = message;
+            statusMessage.className = className;
+        }
+
+        function connectSocket() {
+            updateStatus('Intentando conectar...', 'info');
+            socket = io.connect(socketUrl); 
+
+            socket.on('connect', () => { updateStatus('✅ Conectado. Esperando Ronda.', 'win'); });
+            socket.on('disconnect', () => { updateStatus('❌ Desconectado. Recarga la página.', 'lose'); pressButton.disabled = true; });
+            
+            socket.on('playerPressed', (data) => {
+                if (data.isFirst) { log(`El jugador ${data.playerName} presionó primero. ¡Ronda bloqueada!`, 'lose'); }
+            });
+
+            socket.on('gameWinner', (data) => {
+                if (data.winnerName === TEST_PLAYER_NAME) {
+                    updateStatus('🎉 ¡ERES EL GANADOR DE LA RONDA!', 'win');
+                } else {
+                    updateStatus(`❌ Perdiste. Ganó: ${data.winnerName}`, 'lose');
+                }
+                pressButton.disabled = true;
+            });
+
+            socket.on('statusUpdate', (data) => {
+                log(`Servidor: ${data.message}`);
+                
+                if (data.message.includes('reiniciado') || data.message.includes('Bienvenido')) {
+                    pressButton.disabled = false;
+                    updateStatus('🟢 ¡Ronda Libre! Presiona rápido.', 'info');
+                }
+                
+                if (data.message.includes('Ya presionaste')) {
+                    pressButton.disabled = true;
+                    updateStatus('Ya registraste tu presión esta ronda.', 'info');
+                }
+            });
+        }
+        
+        pressButton.addEventListener('click', () => {
+            pressButton.disabled = true;
+            updateStatus('Presionado. Esperando respuesta del servidor...', 'info');
+            
+            if (socket && socket.connected) {
+                socket.emit('buttonPress', { 
+                    studentId: TEST_STUDENT_ID, 
+                    subjectId: TEST_SUBJECT_ID,
+                    playerName: TEST_PLAYER_NAME 
+                });
+            } else { updateStatus('ERROR: No conectado. Recarga la página.', 'lose'); }
+        });
+
+        connectSocket();
+    </script>
+</body>
+</html>

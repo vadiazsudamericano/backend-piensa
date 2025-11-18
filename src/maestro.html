@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>MAESTRO: Control de Batalla</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background-color: #f0f8ff; }
+        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 12px; border-top: 5px solid #007bff; }
+        h1 { color: #007bff; text-align: center; }
+        #roundStatus { font-size: 1.6em; text-align: center; padding: 12px; border-radius: 8px; margin-bottom: 25px; font-weight: bold; background-color: #007bff; color: white; }
+        #orderList { list-style: none; padding: 0; border: 1px solid #ddd; border-radius: 8px; }
+        #orderList li { padding: 12px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        #orderList li:first-child { background-color: #d4edda; border-left: 5px solid #28a745; font-weight: bold; }
+        .rank { font-size: 1.2em; width: 40px; text-align: center; color: #6c757d; }
+        #resetButton { padding: 15px 30px; background-color: #dc3545; color: white; border: none; border-radius: 8px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>👨‍🏫 Panel de Control (MAESTRO)</h1>
+        <div id="roundStatus">Esperando Conexión...</div>
+        <div class="controls">
+            <button id="resetButton">🔴 REINICIAR RONDA</button>
+        </div>
+        <h2>Orden de Presión (Tiempo Real):</h2>
+        <ul id="orderList"></ul>
+        <hr>
+        <pre id="log"></pre>
+    </div>
+
+    <script>
+        const socketUrl = 'http://localhost:3000'; 
+        let socket;
+        const roundStatus = document.getElementById('roundStatus');
+        const orderList = document.getElementById('orderList');
+        const resetButton = document.getElementById('resetButton');
+        const logElement = document.getElementById('log');
+
+        function updateStatus(message, color = '#17a2b8', textColor = 'white') {
+            roundStatus.textContent = message;
+            roundStatus.style.backgroundColor = color;
+            roundStatus.style.color = textColor;
+        }
+        function log(message, className = 'info') {
+            const entry = document.createElement('div');
+            entry.className = className;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logElement.prepend(entry);
+        }
+        function clearOrder() { orderList.innerHTML = ''; }
+        
+        function addPlayerToOrder(playerData) {
+            const listItem = document.createElement('li');
+            listItem.innerHTML = `<span class="rank">#${playerData.order}</span> 
+                                  <span>${playerData.playerName} (ID: ${playerData.studentId})</span>`;
+            orderList.appendChild(listItem);
+        }
+
+        function connectSocket() {
+            updateStatus('Intentando conectar...', '#ffc107', '#333');
+            socket = io.connect(socketUrl); 
+
+            socket.on('connect', () => { updateStatus('✅ CONECTADO AL SERVIDOR', '#28a745', 'white'); });
+            socket.on('disconnect', () => { updateStatus('❌ DESCONECTADO', '#dc3545', 'white'); });
+            
+            socket.on('playerPressed', (data) => { addPlayerToOrder(data); log(`Presión #${data.order}: ${data.playerName}`); });
+
+            socket.on('gameWinner', (data) => { updateStatus(`🏆 ¡GANADOR! ${data.winnerName}`, '#0056b3', 'white'); log(`Ronda finalizada. Ganador: ${data.winnerName}`); });
+
+            socket.on('statusUpdate', (data) => {
+                log(`Server Status: ${data.message}`);
+                if (data.message.includes('reiniciado')) {
+                    clearOrder();
+                    updateStatus('🟢 NUEVA RONDA INICIADA', '#28aa9d', 'white');
+                }
+            });
+        }
+        
+        resetButton.addEventListener('click', () => {
+            if (socket && socket.connected) {
+                socket.emit('resetGame');
+                log('Emitido: resetGame (Reiniciando ronda)');
+            } else { log('Error: Socket no conectado para enviar el reinicio.'); }
+        });
+
+        connectSocket();
+    </script>
+</body>
+</html>
