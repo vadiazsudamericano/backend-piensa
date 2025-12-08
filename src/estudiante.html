@@ -2,31 +2,159 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ESTUDIANTE: Botón de Batalla</title>
+    <!-- Script para Socket.IO -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
     <style>
-        body { font-family: sans-serif; padding: 50px; background-color: #e6f7ff; text-align: center; }
-        .container { max-width: 600px; margin: 0 auto; background: white; padding: 40px; border-radius: 15px; border-top: 5px solid #0056b3; }
-        h1 { color: #0056b3; }
-        #pressButton { padding: 40px; width: 80%; height: 200px; font-size: 2.5em; background-color: #28a745; color: white; border: none; border-radius: 10px; cursor: pointer; }
+        /* Estilos generales y responsive */
+        body { 
+            font-family: 'Inter', sans-serif; 
+            padding: 20px; 
+            background-color: #f0f4f8; 
+            text-align: center;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+        }
+        .container { 
+            max-width: 600px; 
+            width: 95%;
+            margin-top: 20px;
+            background: white; 
+            padding: 30px; 
+            border-radius: 12px; 
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+        h1 { 
+            color: #0056b3; 
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+        .meta-info {
+            background-color: #e6f7ff;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 0.9em;
+        }
+        .meta-info p { margin: 5px 0; }
+        
+        /* Indicador de Conexión Socket */
+        #socketStatus {
+            font-size: 0.8em;
+            font-weight: bold;
+            padding: 5px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            display: inline-block;
+        }
+        .socket-connected { background-color: #d4edda; color: #155724; }
+        .socket-disconnected { background-color: #f8d7da; color: #721c24; }
+        .socket-pending { background-color: #fff3cd; color: #856404; }
+
+
+        /* Estilos de la Pregunta */
+        #questionDisplay {
+            min-height: 100px;
+            padding: 20px;
+            margin-bottom: 25px;
+            background-color: #007bff;
+            color: white;
+            border-radius: 10px;
+            font-size: 1.4em;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        /* Estilos del Botón Principal */
+        #pressButton { 
+            padding: 40px 20px; 
+            width: 90%; 
+            height: 200px; 
+            font-size: 2.5em; 
+            background-color: #28a745; /* Verde (Habilitado) */
+            color: white; 
+            border: none; 
+            border-radius: 15px; 
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+            box-shadow: 0 5px 0 #1e7e34;
+        }
+        #pressButton:active:not(:disabled) {
+            transform: translateY(4px);
+            box-shadow: 0 1px 0 #1e7e34;
+        }
         #pressButton:hover:not(:disabled) { background-color: #218838; }
-        #pressButton:disabled { background-color: #ccc; cursor: not-allowed; }
-        #statusMessage { margin-top: 20px; font-size: 1.2em; font-weight: bold; }
-        .log-container { text-align: left; margin-top: 30px; border-top: 1px solid #eee; padding-top: 15px; }
+        #pressButton:disabled { 
+            background-color: #9f9f9f; /* Gris (Deshabilitado) */
+            cursor: not-allowed; 
+            box-shadow: none;
+        }
+        
+        /* Estilos del Mensaje de Estado */
+        #statusMessage { 
+            margin-top: 20px; 
+            padding: 10px;
+            font-size: 1.2em; 
+            font-weight: bold; 
+            border-radius: 8px;
+        }
+        .info { background-color: #fff3cd; color: #856404; } /* Amarillo */
+        .win { background-color: #d4edda; color: #155724; } /* Verde claro */
+        .lose { background-color: #f8d7da; color: #721c24; } /* Rojo claro */
+
+        /* Estilos del Log de Notificaciones */
+        .log-container { 
+            text-align: left; 
+            margin-top: 30px; 
+            border-top: 1px solid #eee; 
+            padding-top: 15px; 
+            max-height: 200px;
+            overflow-y: auto;
+            background-color: #f9f9f9;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .log-container h3 { color: #333; margin-top: 0; }
+        #log div { 
+            padding: 5px 0; 
+            border-bottom: 1px dotted #ccc;
+            font-size: 0.9em;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🧑‍🎓 Soy un Estudiante</h1>
-        <p>Mis datos de prueba: **Jugador Estudiante**</p>
+        <h1>🧑‍🎓 Cliente Estudiante</h1>
+        <!-- Indicador de estado de la conexión Socket -->
+        <span id="socketStatus" class="socket-pending">ESTADO: Pendiente</span>
+
+        <!-- Información de Conexión -->
+        <div class="meta-info">
+            <p><strong>Jugador:</strong> <span id="playerNameDisplay">Cargando...</span></p>
+            <p><strong>Sala (Room ID):</strong> <span id="roomIdDisplay">Cargando...</span></p>
+            <p class="text-xs">Nota: Abre otra ventana para el Maestro y más Jugadores, usando el mismo Room ID.</p>
+        </div>
+
+        <!-- Visualización de la Pregunta -->
+        <div id="questionDisplay">Esperando la primera pregunta del Maestro...</div>
         
+        <!-- Botón de Pulsación (Buzzer) -->
         <button id="pressButton" disabled>PRESIONAR</button>
         
-        <div id="statusMessage">Esperando que inicie la ronda...</div>
+        <!-- Mensaje de Estado -->
+        <div id="statusMessage" class="info">Conectando...</div>
 
+        <!-- Log de Notificaciones -->
         <div class="log-container">
-            <h3>Notificaciones:</h3>
-            <pre id="log"></pre>
+            <h3>Notificaciones del Servidor:</h3>
+            <div id="log"></div>
         </div>
     </div>
 
@@ -35,71 +163,167 @@
         let socket;
         const pressButton = document.getElementById('pressButton');
         const statusMessage = document.getElementById('statusMessage');
+        const questionDisplay = document.getElementById('questionDisplay');
         const logElement = document.getElementById('log');
+        const socketStatus = document.getElementById('socketStatus');
 
-        const TEST_STUDENT_ID = 'student-456-test';
-        const TEST_PLAYER_NAME = 'Jugador Estudiante';
+
+        // --- DATOS DE PRUEBA CENTRALES (AJUSTA ESTOS VALORES) ---
+        const TEST_ROOM_ID = 'Sala-001'; // ¡Debe coincidir con la sala del Maestro!
+        const TEST_STUDENT_ID = `student-${Math.random().toString(36).substring(2, 6)}`; // ID ÚNICO
+        const TEST_PLAYER_NAME = `Jugador ${TEST_STUDENT_ID.slice(-4)}`;
         const TEST_SUBJECT_ID = 'subject-xyz-456';
+        
+        // Mostrar datos en la UI
+        document.getElementById('playerNameDisplay').textContent = TEST_PLAYER_NAME;
+        document.getElementById('roomIdDisplay').textContent = TEST_ROOM_ID;
+        // --------------------------------------------------------
 
-        function log(message, className = 'info') {
+        // Función para añadir mensajes al log
+        function log(message, className = '') {
             const entry = document.createElement('div');
             entry.className = className;
             entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
             logElement.prepend(entry);
+            console.log(`[ESTUDIANTE LOG - ${TEST_PLAYER_NAME}] ${message}`); // Log adicional en consola
         }
+        
+        // Función para actualizar el mensaje de estado principal
         function updateStatus(message, className = 'info') {
             statusMessage.textContent = message;
             statusMessage.className = className;
         }
 
+        function updateSocketStatus(isConnected) {
+            if (isConnected) {
+                socketStatus.textContent = "ESTADO: CONECTADO";
+                socketStatus.className = "socket-connected";
+            } else {
+                socketStatus.textContent = "ESTADO: DESCONECTADO/ERROR";
+                socketStatus.className = "socket-disconnected";
+            }
+        }
+
+        // Función para unirse a la sala
+        function joinGame() {
+            log(`Intentando unirse a la sala: ${TEST_ROOM_ID}`);
+            socket.emit('joinGame', {
+                roomId: TEST_ROOM_ID,
+                studentId: TEST_STUDENT_ID,
+                playerName: TEST_PLAYER_NAME,
+                isMaster: false // Indica que es un cliente estudiante
+            });
+        }
+
+        // Función principal para conectar el socket y escuchar eventos
         function connectSocket() {
             updateStatus('Intentando conectar...', 'info');
-            socket = io.connect(socketUrl); 
-
-            socket.on('connect', () => { updateStatus('✅ Conectado. Esperando Ronda.', 'win'); });
-            socket.on('disconnect', () => { updateStatus('❌ Desconectado. Recarga la página.', 'lose'); pressButton.disabled = true; });
+            updateSocketStatus(false);
             
-            socket.on('playerPressed', (data) => {
-                if (data.isFirst) { log(`El jugador ${data.playerName} presionó primero. ¡Ronda bloqueada!`, 'lose'); }
+            // Conexión al servidor WebSocket
+            socket = io.connect(socketUrl, { 
+                reconnection: true, 
+                reconnectionAttempts: 5 
+            }); 
+
+            // Evento: Error de conexión 
+            socket.on('connect_error', (err) => {
+                updateStatus(`❌ Error de conexión: ${err.message}. Verifica que NestJS esté corriendo.`, 'lose'); 
+                log(`ERROR AL CONECTAR: ${err.message}`);
+                updateSocketStatus(false);
+                pressButton.disabled = true; 
             });
 
+            // Evento: Conexión exitosa
+            socket.on('connect', () => { 
+                updateStatus('✅ Conectado al WebSocket. Uniéndose a la sala...', 'info'); 
+                updateSocketStatus(true);
+                joinGame();
+            });
+            
+            // Evento: Desconexión
+            socket.on('disconnect', () => { 
+                updateStatus('❌ Desconectado. Recarga la página.', 'lose'); 
+                updateSocketStatus(false);
+                pressButton.disabled = true; 
+            });
+            
+            // Evento: El Maestro envió una nueva pregunta
+            socket.on('newQuestion', (data) => {
+                // --- DEPURACIÓN AGRESIVA ---
+                console.error(`!!! 🚀 EVENTO 'newQuestion' RECIBIDO en ${TEST_PLAYER_NAME} !!!`); 
+                console.log(`DATOS RECIBIDOS:`, data);
+                // ---------------------------
+                
+                questionDisplay.textContent = data.question;
+                
+                // --- LÓGICA DE HABILITACIÓN CLAVE ---
+                pressButton.disabled = false;
+                // ------------------------------------
+                
+                updateStatus('🟢 ¡PREGUNTA RECIBIDA! Presiona para responder.', 'win');
+                log(`🎉 [newQuestion RECIBIDO] ¡Botón HABILITADO! Pregunta: ${data.question}`); 
+                
+                // --- CHEQUEO POST-HABILITACIÓN ---
+                if (!pressButton.disabled) {
+                    console.error(`!!! ✅ Botón habilitado exitosamente! disabled = ${pressButton.disabled} !!!`);
+                } else {
+                    console.error(`!!! ❌ ERROR: Botón sigue deshabilitado después de newQuestion! disabled = ${pressButton.disabled} !!!`);
+                }
+            });
+
+            // Evento: Un jugador presionó (incluído yo)
+            socket.on('playerPressed', (data) => {
+                log(`Pulsación registrada: ${data.playerName} (Orden: ${data.order})`);
+                if (data.isFirst) { 
+                    log(`🎉 ¡${data.playerName} presionó primero! Ronda bloqueada.`, 'lose'); 
+                    pressButton.disabled = true; // Bloquea si alguien (incluido yo) pulsó primero
+                    updateStatus(`🔴 Ronda Bloqueada. Ganador potencial: ${data.playerName}.`, 'lose');
+                }
+            });
+
+            // Evento: El Maestro declaró un ganador
             socket.on('gameWinner', (data) => {
-                if (data.winnerName === TEST_PLAYER_NAME) {
-                    updateStatus('🎉 ¡ERES EL GANADOR DE LA RONDA!', 'win');
+                if (data.winnerName.trim() === TEST_PLAYER_NAME.trim()) {
+                    updateStatus('🏆 ¡ERES EL GANADOR DE LA RONDA!', 'win');
                 } else {
                     updateStatus(`❌ Perdiste. Ganó: ${data.winnerName}`, 'lose');
                 }
                 pressButton.disabled = true;
             });
 
+            // Evento: Mensajes generales de estado del servidor/Maestro
             socket.on('statusUpdate', (data) => {
                 log(`Servidor: ${data.message}`);
                 
-                if (data.message.includes('reiniciado') || data.message.includes('Bienvenido')) {
-                    pressButton.disabled = false;
-                    updateStatus('🟢 ¡Ronda Libre! Presiona rápido.', 'info');
-                }
-                
-                if (data.message.includes('Ya presionaste')) {
-                    pressButton.disabled = true;
-                    updateStatus('Ya registraste tu presión esta ronda.', 'info');
+                if (data.message.includes('reiniciado') || data.type === 'reset') {
+                    pressButton.disabled = true; 
+                    questionDisplay.textContent = 'Esperando nueva pregunta...';
+                    updateStatus('🟡 Ronda Reiniciada. Esperando pregunta del Maestro.', 'info');
                 }
             });
         }
         
+        // Manejador de evento al presionar el botón
         pressButton.addEventListener('click', () => {
-            pressButton.disabled = true;
-            updateStatus('Presionado. Esperando respuesta del servidor...', 'info');
-            
-            if (socket && socket.connected) {
-                socket.emit('buttonPress', { 
-                    studentId: TEST_STUDENT_ID, 
-                    subjectId: TEST_SUBJECT_ID,
-                    playerName: TEST_PLAYER_NAME 
-                });
-            } else { updateStatus('ERROR: No conectado. Recarga la página.', 'lose'); }
+            // Se puede presionar el botón si NO está deshabilitado
+            if (!pressButton.disabled) {
+                pressButton.disabled = true; // Deshabilitar inmediatamente para evitar pulsaciones múltiples
+                updateStatus('Presionado. Esperando respuesta del servidor...', 'info');
+                
+                if (socket && socket.connected) {
+                    // Emitir la pulsación al servidor
+                    socket.emit('buttonPress', { 
+                        studentId: TEST_STUDENT_ID, 
+                        subjectId: TEST_SUBJECT_ID,
+                        playerName: TEST_PLAYER_NAME,
+                        roomId: TEST_ROOM_ID 
+                    });
+                } else { updateStatus('ERROR: No conectado. Recarga la página.', 'lose'); }
+            }
         });
 
+        // Iniciar la conexión al cargar la página
         connectSocket();
     </script>
 </body>
