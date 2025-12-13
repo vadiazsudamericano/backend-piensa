@@ -1,14 +1,16 @@
-// src/game-battle/game-battle.module.ts
 import { Module } from '@nestjs/common';
 import { GameBattleGateway } from './game-battle.gateway';
 import { GameBattleService } from './game-battle.service';
-import { PrismaModule } from '../prisma/prisma.module';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Module({
-  imports: [PrismaModule], 
   providers: [
-    GameBattleGateway, 
+    GameBattleGateway,
+    GameBattleService,
+    PrismaService
+  ],
+  exports: [
     GameBattleService
-  ], 
+  ],
 })
 export class GameBattleModule {}
