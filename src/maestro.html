@@ -1,188 +1,84 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MAESTRO: Control de Batalla</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
-  <style>
-    body { font-family:'Inter',sans-serif; padding:20px; background-color:#f0f8ff; display:flex; justify-content:center;}
-    .container{max-width:800px;width:95%;margin-top:20px;background:#fff;padding:30px;border-radius:12px;box-shadow:0 10px 25px rgba(0,0,0,0.1);border-top:5px solid #007bff;}
-    h1{text-align:center;color:#007bff;margin-bottom:5px;}
-    .meta-info, .join-form{background-color:#eaf5ff;padding:15px;border-radius:8px;margin-bottom:25px;font-size:0.95em;border:1px solid #cce5ff;text-align:left;}
-    .meta-info p{margin:5px 0;font-weight:500;}
-    #socketStatus{font-size:0.8em;font-weight:bold;padding:5px;border-radius:4px;margin-bottom:15px;display:inline-block;}
-    .socket-connected{background-color:#d4edda;color:#155724;}
-    .socket-disconnected{background-color:#f8d7da;color:#721c24;}
-    .socket-pending{background-color:#fff3cd;color:#856404;}
-    .join-form input,.join-form button{width:100%;padding:10px;margin-bottom:10px;border-radius:6px;border:1px solid #ccc;box-sizing:border-box;}
-    .join-form button{background-color:#007bff;color:white;font-weight:bold;cursor:pointer;transition:0.2s;box-shadow:0 4px 0 #0056b3;}
-    .join-form button:active{transform:translateY(2px);box-shadow:0 1px 0 #0056b3;}
-    #roundStatus{font-size:1.6em;text-align:center;padding:15px;border-radius:8px;margin-bottom:25px;font-weight:bold;background-color:#007bff;color:white;transition:0.3s;}
-    .controls{display:flex;gap:15px;flex-direction:column;margin-bottom:25px;}
-    .question-control, .game-control{background-color:#f5f5f5;padding:15px;border-radius:8px;border:1px solid #ddd;}
-    .question-control textarea{width:100%;min-height:80px;padding:10px;border-radius:6px;border:1px solid #ccc;margin-bottom:10px;box-sizing:border-box;}
-    .button-group{display:flex;gap:10px;justify-content:center;}
-    #sendQuestionButton,#selectWinnerButton,#resetButton{padding:12px 20px;color:white;border:none;border-radius:8px;cursor:pointer;font-size:1.1em;transition:0.1s;flex-grow:1;}
-    #sendQuestionButton{background-color:#ffc107;box-shadow:0 4px 0 #d39e00;}
-    #sendQuestionButton:hover{background-color:#e0a800;}
-    #sendQuestionButton:active{transform:translateY(2px);box-shadow:0 1px 0 #d39e00;}
-    #selectWinnerButton{background-color:#28a745;box-shadow:0 4px 0 #1e7e34;}
-    #selectWinnerButton:hover{background-color:#218838;}
-    #selectWinnerButton:active{transform:translateY(2px);box-shadow:0 1px 0 #1e7e34;}
-    #resetButton{background-color:#dc3545;box-shadow:0 4px 0 #b02a37;}
-    #resetButton:hover{background-color:#c82333;}
-    #resetButton:active{transform:translateY(2px);box-shadow:0 1px 0 #b02a37;}
-    .hide{display:none;}
-    h2{color:#343a40;border-bottom:2px solid #eee;padding-bottom:10px;margin-top:0;}
-    #orderList{list-style:none;padding:0;border:1px solid #ddd;border-radius:8px;max-height:300px;overflow-y:auto;}
-    #orderList li{padding:12px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;}
-    #orderList li:first-child{background-color:#e6ffed;border-left:5px solid #28a745;font-weight:bold;}
-    #log{margin-top:15px;font-size:0.85em;color:#6c757d;background-color:#f8f9fa;padding:10px;border-radius:5px;max-height:150px;overflow-y:auto;}
-    #log div{border-bottom:1px dotted #ccc;padding:3px 0;}
-  </style>
+    <meta charset="UTF-8">
+    <title>Maestro - Selección de Banco</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f8fafc; text-align: center; padding: 20px; }
+        .container { background: white; max-width: 800px; margin: auto; padding: 30px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        .room-id { font-size: 40px; font-weight: bold; color: #3b82f6; }
+        select { width: 100%; padding: 12px; font-size: 16px; border-radius: 8px; margin: 15px 0; border: 2px solid #e2e8f0; }
+        .btn { padding: 15px 30px; font-size: 18px; border: none; border-radius: 10px; cursor: pointer; background: #10b981; color: white; width: 100%; }
+        table { width: 100%; margin-top: 20px; border-collapse: collapse; }
+        th, td { padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: left; }
+    </style>
 </head>
 <body>
-  <div class="container">
-    <h1>👨‍🏫 Panel Maestro</h1>
+    <div class="container">
+        <div id="setup">
+            <button class="btn" onclick="crearSala()">🚀 INICIAR CLASE</button>
+        </div>
 
-    <div id="join-form" class="join-form">
-      <h3>Configuración de Sala</h3>
-      <input type="text" id="inputRoomId" placeholder="ID de la Sala">
-      <input type="text" id="inputTeacherName" placeholder="Tu Nombre">
-      <button id="joinButton">Unirse a Sala</button>
+        <div id="game-panel" style="display:none">
+            <div class="room-id" id="display-room">----</div>
+            
+            <div style="text-align: left; margin: 20px 0;">
+                <label><b>Selecciona el Banco de Preguntas:</b></label>
+                <select id="subject-select"></select>
+            </div>
+
+            <button class="btn" onclick="lanzarPregunta()">🔫 LANZAR PREGUNTA</button>
+
+            <table>
+                <thead>
+                    <tr><th>Estudiante</th><th>Estado</th><th>Puntos</th></tr>
+                </thead>
+                <tbody id="student-table"></tbody>
+            </table>
+        </div>
     </div>
 
-    <div id="game-ui" class="hide">
-      <span id="socketStatus" class="socket-pending">ESTADO: Pendiente</span>
-      <div class="meta-info">
-        <p><strong>Maestro:</strong> <span id="teacherNameDisplay"></span></p>
-        <p><strong>Sala (Room ID):</strong> <span id="roomIdDisplay"></span></p>
-      </div>
+    <script>
+        const socket = io('http://localhost:3000/battle');
+        let currentRoom = "";
 
-      <div id="roundStatus">Esperando Conexión...</div>
+        function crearSala() { socket.emit('create-room'); }
 
-      <div class="controls">
-        <div class="question-control">
-          <h3>Nueva Pregunta</h3>
-          <textarea id="questionInput" placeholder="Escribe la pregunta..."></textarea>
-          <div class="button-group">
-            <button id="sendQuestionButton">📢 ENVIAR PREGUNTA</button>
-          </div>
-        </div>
-        <div class="game-control">
-          <h3>Controles de Ronda</h3>
-          <div class="button-group">
-            <button id="selectWinnerButton" disabled>🏆 DECLARAR GANADOR</button>
-            <button id="resetButton">🔴 REINICIAR RONDA</button>
-          </div>
-        </div>
-      </div>
+        socket.on('room-created', data => {
+            currentRoom = data.roomId;
+            document.getElementById('display-room').innerText = "CÓDIGO: " + currentRoom;
+            document.getElementById('setup').style.display = 'none';
+            document.getElementById('game-panel').style.display = 'block';
 
-      <h2>Orden de Pulsaciones:</h2>
-      <ul id="orderList"><li>No hay pulsaciones registradas.</li></ul>
-      <hr>
-      <div class="log-container"><h3>Logs:</h3><div id="log"></div></div>
-    </div>
-  </div>
+            // LLENAR EL SELECT CON LOS BANCOS RECIBIDOS
+            const select = document.getElementById('subject-select');
+            select.innerHTML = data.subjects.map(s => 
+                `<option value="${s.id}">${s.name}</option>`
+            ).join('');
+        });
 
-<script>
-const socketUrl = 'http://localhost:3000/battle';
-let socket;
+        function lanzarPregunta() {
+            const subjectId = document.getElementById('subject-select').value;
+            socket.emit('start-question', { roomId: currentRoom, subjectId: subjectId });
+        }
 
-const joinForm = document.getElementById('join-form');
-const gameUI = document.getElementById('game-ui');
-const joinButton = document.getElementById('joinButton');
-const roundStatus = document.getElementById('roundStatus');
-const orderList = document.getElementById('orderList');
-const resetButton = document.getElementById('resetButton');
-const sendQuestionButton = document.getElementById('sendQuestionButton');
-const selectWinnerButton = document.getElementById('selectWinnerButton');
-const questionInput = document.getElementById('questionInput');
-const logElement = document.getElementById('log');
-const socketStatus = document.getElementById('socketStatus');
+        socket.on('room-update', data => renderTable(data.students));
+        socket.on('round-result', data => {
+            alert("¡Ronda ganada por " + data.winnerName + "!");
+            renderTable(data.students);
+        });
 
-let ROOM_ID, TEACHER_NAME;
-const TEST_TEACHER_ID = 'teacher-master-001';
-const TEST_SUBJECT_ID = 'subject-xyz-456';
-
-function generateRoomId(){ return 'ROOM-'+Math.random().toString(36).substring(2,8).toUpperCase(); }
-document.getElementById('inputRoomId').value = generateRoomId();
-
-function updateStatus(msg,color=''){ roundStatus.textContent=msg; if(color) roundStatus.style.backgroundColor=color; }
-function log(msg){ const d=document.createElement('div'); d.textContent=`[${new Date().toLocaleTimeString()}] ${msg}`; logElement.prepend(d); console.log(msg); }
-
-function clearOrder(){ orderList.innerHTML='<li>No hay pulsaciones registradas.</li>'; selectWinnerButton.disabled=true; }
-function addPlayerToOrder(data){ 
-  if(orderList.querySelector('li') && orderList.querySelector('li').textContent.includes('No hay pulsaciones')) orderList.innerHTML='';
-  const li=document.createElement('li');
-  li.innerHTML=`<span>#${data.order}</span> ${data.playerName} (${data.studentId}) - ${new Date(data.timestamp).toLocaleTimeString()}`;
-  if(data.order===1){ selectWinnerButton.disabled=false; li.style.backgroundColor='#e6ffed'; li.style.borderLeft='5px solid #28a745'; li.style.fontWeight='bold'; }
-  orderList.appendChild(li);
-}
-
-joinButton.addEventListener('click',()=>{
-  ROOM_ID=document.getElementById('inputRoomId').value.trim();
-  TEACHER_NAME=document.getElementById('inputTeacherName').value.trim();
-  if(!ROOM_ID||!TEACHER_NAME){ alert('Debes ingresar Sala y Nombre'); return; }
-
-  joinForm.classList.add('hide');
-  gameUI.classList.remove('hide');
-  document.getElementById('teacherNameDisplay').textContent=TEACHER_NAME;
-  document.getElementById('roomIdDisplay').textContent=ROOM_ID;
-
-  updateStatus('Intentando conectar...');
-  socketStatus.textContent='ESTADO: PENDIENTE';
-  socket = io(socketUrl);
-
-  socket.on('connect',()=>{
-    socketStatus.textContent='ESTADO: CONECTADO';
-    socket.emit('joinGame',{roomId:ROOM_ID,studentId:TEST_TEACHER_ID,playerName:TEACHER_NAME,isMaster:true});
-    updateStatus('Conectado al servidor','#007bff');
-  });
-
-  socket.on('disconnect',()=>{
-    socketStatus.textContent='ESTADO: DESCONECTADO';
-    updateStatus('Desconectado','#dc3545');
-    selectWinnerButton.disabled=true;
-  });
-
-  socket.on('playerPressed', addPlayerToOrder);
-
-  // Escuchar a los estudiantes cuando respondan
-  socket.on('statusUpdate',(data)=>{ 
-    log(data.message); 
-    if(data.type==='reset'){ clearOrder(); updateStatus('Nueva ronda','#28aa9d'); questionInput.disabled=false; sendQuestionButton.disabled=false; }
-    if(data.type==='question_sent'){ 
-      updateStatus('Pregunta enviada','#007bff'); 
-      questionInput.disabled=true; 
-      sendQuestionButton.disabled=true; 
-      // Emitir pregunta a los estudiantes de la sala
-      socket.emit('newQuestion',{ roomId:ROOM_ID, question:questionInput.value.trim() });
-    }
-  });
-});
-
-sendQuestionButton.addEventListener('click',()=>{
-  const question=questionInput.value.trim();
-  if(!question){ alert('Ingresa pregunta'); return; }
-  if(socket && socket.connected){
-    // Emitimos a los estudiantes
-    socket.emit('newQuestion',{ roomId:ROOM_ID, question });
-    log(`Pregunta enviada: ${question}`);
-    updateStatus('Pregunta enviada','#007bff');
-    questionInput.disabled=true;
-    sendQuestionButton.disabled=true;
-  }
-});
-
-selectWinnerButton.addEventListener('click',()=>{
-  if(socket && socket.connected){ socket.emit('selectWinner',{roomId:ROOM_ID,subjectId:TEST_SUBJECT_ID}); selectWinnerButton.disabled=true; log('Ganador seleccionado'); }
-});
-
-resetButton.addEventListener('click',()=>{
-  if(socket && socket.connected){ socket.emit('resetGame',{roomId:ROOM_ID,subjectId:TEST_SUBJECT_ID}); log('Ronda reiniciada'); questionInput.disabled=false; sendQuestionButton.disabled=false; }
-});
-</script>
+        function renderTable(students) {
+            const tbody = document.getElementById('student-table');
+            tbody.innerHTML = students.map(s => `
+                <tr>
+                    <td>👤 ${s.name}</td>
+                    <td>${s.hasAnswered ? '✅ Listo' : '🤔 Pensando...'} <small>(${s.lastResult})</small></td>
+                    <td><b>${s.points}</b></td>
+                </tr>
+            `).join('');
+        }
+    </script>
 </body>
 </html>

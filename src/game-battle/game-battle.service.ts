@@ -1,78 +1,72 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { GameBattleGateway } from './game-battle.gateway';
-
-const POINTS_PER_WIN = 10;
-const TRANSACTION_REASON = 'Ganador Batalla de Respuesta Rápida';
 
 @Injectable()
 export class GameBattleService {
-  private readonly logger = new Logger(GameBattleService.name);
+  constructor(private prisma: PrismaService) {}
 
-  constructor(
-    private prisma: PrismaService,
-    private gateway: GameBattleGateway,
-  ) {}
+  // Obtener todos los bancos de un maestro con conteo de preguntas
+  async getTeacherSubjects(teacherId: string) {
+    return await this.prisma.subject.findMany({
+      where: { teacherId },
+      include: {
+        _count: {
+          select: { questions: true }
+        }
+      }
+    });
+  }
 
-  /**
-   * Registra la victoria de un usuario y otorga puntos.
-   */
-  async registerWin(studentId: string, subjectId: string): Promise<void> {
-    this.logger.log(
-      `🏆 Iniciando registro de victoria → User: ${studentId}, Materia: ${subjectId}`,
-    );
+  // Crear un nuevo banco desde el panel
+  async createSubject(name: string, teacherId: string) {
+    return await this.prisma.subject.create({
+      data: {
+        name,
+        teacher: { connect: { id: teacherId } },
+        // Ajusta estos campos según tu esquema de Prisma
+        cycle: 'Ciclo Actual',
+        year: new Date().getFullYear(),
+        joinCode: Math.random().toString(36).substring(2, 6).toUpperCase(),
+      }
+    });
+  }
 
-    try {
-      await this.prisma.$transaction(async (tx) => {
-        // 1️⃣ Actualizar o crear saldo
-        const balance = await tx.pointBalance.upsert({
-          where: {
-            studentId_subjectId: { studentId, subjectId },
-          },
-          update: {
-            amount: { increment: POINTS_PER_WIN },
-          },
-          create: {
-            studentId,
-            subjectId,
-            amount: POINTS_PER_WIN,
-          },
-        });
+  // Obtener una pregunta aleatoria de un banco específico
+  async getRandomQuestion(subjectId: string) {
+    const questions = await this.prisma.question.findMany({
+      where: { subjectId },
+      include: { options: true }
+    });
 
-        // 2️⃣ Registrar auditoría
-        await tx.pointTransaction.create({
-          data: {
-            studentId,
-            subjectId,
-            amount: POINTS_PER_WIN,
-            type: 'EARNED',
-            reason: TRANSACTION_REASON,
-          },
-        });
-
-        // 3️⃣ Obtener nombre para logs y broadcast
-        const user = await tx.user.findUnique({
-          where: { id: studentId },
-          select: { fullName: true },
-        });
-
-        this.logger.log(
-          `✔ Victoria registrada → ${user?.fullName || studentId} ganó ${POINTS_PER_WIN} puntos. Nuevo saldo: ${balance.amount}`,
-        );
-
-        // 4️⃣ Enviar broadcast global
-        this.gateway.broadcastWin({
-          winnerId: studentId,
-          winnerName: user?.fullName || studentId, // ← agregado
-          points: POINTS_PER_WIN,
-          subjectId,
-        });
-      });
-    } catch (err) {
-      this.logger.error(
-        `❌ Error al registrar victoria → ${studentId}: ${err.message}`,
-      );
-      throw new Error('Error al registrar victoria y puntos.');
+    if (questions.length === 0) {
+      throw new BadRequestException('El banco seleccionado no tiene preguntas.');
     }
+
+    return questions[Math.floor(Math.random() * questions.length)];
+  }
+
+  // Validar respuesta y sumar puntos en la DB
+  async validateAndAssignPoints(studentName: string, optionId: string, subjectId: string, points: number) {
+    const option = await this.prisma.option.findUnique({
+      where: { id: optionId },
+      include: { question: true }
+    });
+
+    if (!option || !option.isCorrect) return { success: false };
+
+    // Buscamos al estudiante por nombre (asegúrate de que el nombre sea único o usa ID)
+    const student = await this.prisma.user.findFirst({ where: { fullName: studentName } });
+    if (!student) return { success: false };
+
+    // Actualizamos o creamos el balance de puntos
+    const updatedBalance = await this.prisma.pointBalance.upsert({
+      where: {
+        studentId_subjectId: { studentId: student.id, subjectId }
+      },
+      update: { amount: { increment: points } },
+      create: { studentId: student.id, subjectId, amount: points }
+    });
+
+    return { success: true, totalPoints: updatedBalance.amount };
   }
 }

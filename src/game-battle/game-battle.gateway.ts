@@ -1,95 +1,111 @@
-import {
-  WebSocketGateway,
-  WebSocketServer,
-  SubscribeMessage,
-  MessageBody,
-  ConnectedSocket,
-  OnGatewayConnection,
-  OnGatewayDisconnect,
+import { 
+  WebSocketGateway, 
+  WebSocketServer, 
+  SubscribeMessage, 
+  MessageBody, 
+  ConnectedSocket 
 } from '@nestjs/websockets';
-import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
+import { GameBattleService } from './game-battle.service';
 
-interface WinBroadcastPayload {
-  winnerId: string;
-  winnerName: string;   // ← agregado
-  points: number;
-  subjectId: string;
-}
+@WebSocketGateway({ cors: { origin: '*' }, namespace: 'battle' })
+export class GameBattleGateway {
+  @WebSocketServer() server: Server;
 
-@WebSocketGateway({
-  cors: { origin: '*' },
-  namespace: '/battle', // namespace PRO para evitar conflictos
-})
-export class GameBattleGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
-{
-  @WebSocketServer()
-  server: Server;
+  private rooms = new Map<string, {
+    roomId: string;
+    teacherId: string;
+    subjectId: string;
+    roundActive: boolean;
+    students: any[];
+  }>();
 
-  private readonly logger = new Logger(GameBattleGateway.name);
-  private connectedStudents = new Map<string, string>();
+  constructor(private readonly gameService: GameBattleService) {}
 
-  handleConnection(client: Socket) {
-    this.logger.log(`🔌 Cliente conectado → ${client.id}`);
-  }
-
-  handleDisconnect(client: Socket) {
-    const studentId = this.connectedStudents.get(client.id);
-    this.connectedStudents.delete(client.id);
-    this.logger.warn(
-      `❌ Cliente desconectado → ${client.id} (${studentId || 'sin identificar'})`,
-    );
-  }
-
-  @SubscribeMessage('register-student')
-  handleRegisterStudent(
-    @MessageBody() data: { studentId: string },
-    @ConnectedSocket() client: Socket,
-  ) {
-    if (!data?.studentId) {
-      this.logger.error('⚠ Evento register-student sin studentId');
-      return;
-    }
-
-    this.connectedStudents.set(client.id, data.studentId);
-
-    this.logger.log(
-      `🎮 Estudiante registrado en batalla → ${data.studentId} (socket: ${client.id})`,
-    );
-
-    client.emit('register-confirmed', {
-      ok: true,
-      studentId: data.studentId,
+  @SubscribeMessage('create-room')
+  async handleCreateRoom(@MessageBody() data: { teacherId: string }, @ConnectedSocket() client: Socket) {
+    const roomId = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const subjects = await this.gameService.getTeacherSubjects(data.teacherId);
+    
+    this.rooms.set(roomId, {
+      roomId,
+      teacherId: data.teacherId,
+      subjectId: '',
+      roundActive: false,
+      students: []
     });
+
+    client.join(roomId);
+    client.emit('room-created', { roomId, mySubjects: subjects });
   }
 
-  /**
-   * Broadcast global de victoria
-   */
-  broadcastWin(payload: WinBroadcastPayload) {
-    this.logger.verbose(
-      `📣 Broadcast → Ganador ${payload.winnerName} (+${payload.points} pts)`,
-    );
-    this.server.emit('battle-win', payload);
-  }
-
-  /**
-   * Enviar mensaje solo a un estudiante
-   */
-  sendToStudent(studentId: string, event: string, data: any) {
-    for (const [socketId, sid] of this.connectedStudents.entries()) {
-      if (sid === studentId) {
-        this.server.to(socketId).emit(event, data);
-        this.logger.log(
-          `🎯 Mensaje enviado a estudiante → ${studentId} (evento: ${event})`,
-        );
-      }
+  @SubscribeMessage('create-new-subject')
+  async handleNewSubject(@MessageBody() data: { name: string, teacherId: string }, @ConnectedSocket() client: Socket) {
+    try {
+      await this.gameService.createSubject(data.name, data.teacherId);
+      const subjects = await this.gameService.getTeacherSubjects(data.teacherId);
+      client.emit('subjects-updated', { mySubjects: subjects });
+    } catch (e) {
+      client.emit('error', 'No se pudo crear el banco.');
     }
   }
 
-  @SubscribeMessage('ping')
-  handlePing(@ConnectedSocket() client: Socket) {
-    client.emit('pong', { timestamp: Date.now() });
+  @SubscribeMessage('join-room')
+  handleJoinRoom(@MessageBody() data: { roomId: string, studentName: string }, @ConnectedSocket() client: Socket) {
+    const room = this.rooms.get(data.roomId.toUpperCase());
+    if (!room) return client.emit('error', 'Sala no encontrada');
+
+    const newStudent = { name: data.studentName, socketId: client.id, points: 0, hasAnswered: false };
+    room.students.push(newStudent);
+    
+    client.join(room.roomId);
+    this.server.to(room.roomId).emit('room-update', { students: room.students });
+  }
+
+  @SubscribeMessage('start-question')
+  async handleStartQuestion(@MessageBody() data: { roomId: string, subjectId: string }) {
+    const room = this.rooms.get(data.roomId.toUpperCase());
+    if (!room) return;
+
+    try {
+      const question = await this.gameService.getRandomQuestion(data.subjectId);
+      room.roundActive = true;
+      room.subjectId = data.subjectId;
+      room.students.forEach(s => s.hasAnswered = false);
+
+      this.server.to(room.roomId).emit('new-question', {
+        text: question.text,
+        options: question.options.map(o => ({ id: o.id, text: o.text }))
+      });
+      this.server.to(room.roomId).emit('room-update', { students: room.students });
+    } catch (e) {
+      this.server.to(room.roomId).emit('error', e.message);
+    }
+  }
+
+  @SubscribeMessage('submit-answer')
+  async handleSubmitAnswer(
+    @MessageBody() data: { roomId: string, studentName: string, optionId: string },
+    @ConnectedSocket() client: Socket
+  ) {
+    const room = this.rooms.get(data.roomId.toUpperCase());
+    if (!room || !room.roundActive) return;
+
+    const student = room.students.find(s => s.name === data.studentName);
+    if (!student || student.hasAnswered) return;
+
+    student.hasAnswered = true;
+    const result = await this.gameService.validateAndAssignPoints(data.studentName, data.optionId, room.subjectId, 10);
+
+    if (result.success) {
+      room.roundActive = false;
+      student.points = result.totalPoints;
+      this.server.to(room.roomId).emit('round-result', { 
+        winnerName: student.name, 
+        students: room.students 
+      });
+    } else {
+      this.server.to(room.roomId).emit('room-update', { students: room.students });
+    }
   }
 }

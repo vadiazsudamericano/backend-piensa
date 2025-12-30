@@ -1,118 +1,57 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ESTUDIANTE: Batalla de Respuesta</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
-<style>
-body { font-family:'Inter',sans-serif; padding:20px; background-color:#f0f8ff; display:flex; justify-content:center;}
-.container{max-width:600px;width:95%;margin-top:20px;background:#fff;padding:30px;border-radius:12px;box-shadow:0 10px 25px rgba(0,0,0,0.1);border-top:5px solid #28a745;}
-h1{text-align:center;color:#28a745;margin-bottom:5px;}
-.join-form, .game-ui{background-color:#eaf5ef;padding:15px;border-radius:8px;margin-bottom:25px;font-size:0.95em;border:1px solid #cce5d0;text-align:left;}
-.join-form input,.join-form button{width:100%;padding:10px;margin-bottom:10px;border-radius:6px;border:1px solid #ccc;box-sizing:border-box;}
-.join-form button{background-color:#28a745;color:white;font-weight:bold;cursor:pointer;transition:0.2s;box-shadow:0 4px 0 #1e7e34;}
-.join-form button:active{transform:translateY(2px);box-shadow:0 1px 0 #1e7e34;}
-#socketStatus{font-size:0.85em;font-weight:bold;padding:5px;border-radius:4px;margin-bottom:15px;display:inline-block;}
-.socket-connected{background-color:#d4edda;color:#155724;}
-.socket-disconnected{background-color:#f8d7da;color:#721c24;}
-.socket-pending{background-color:#fff3cd;color:#856404;}
-#questionDisplay{font-size:1.2em;font-weight:bold;text-align:center;padding:15px;border-radius:8px;margin-bottom:25px;background-color:#ffc;transition:0.3s;}
-#pressButton{width:100%;padding:15px;font-size:1.2em;font-weight:bold;color:white;background-color:#007bff;border:none;border-radius:8px;cursor:pointer;box-shadow:0 4px 0 #0056b3;transition:0.1s;}
-#pressButton:active{transform:translateY(2px);box-shadow:0 1px 0 #0056b3;}
-#pressButton:disabled{background-color:#ccc;cursor:not-allowed;box-shadow:none;}
-#log{margin-top:15px;font-size:0.85em;color:#6c757d;background-color:#f8f9fa;padding:10px;border-radius:5px;max-height:150px;overflow-y:auto;}
-#log div{border-bottom:1px dotted #ccc;padding:3px 0;}
-</style>
+    <meta charset="UTF-8">
+    <title>Estudiante</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; }
+        .opt { display: block; width: 100%; padding: 20px; margin: 10px 0; border: 2px solid #3b82f6; border-radius: 12px; font-size: 20px; cursor: pointer; background: white; }
+        .opt:disabled { background: #f1f5f9; border-color: #cbd5e1; cursor: not-allowed; }
+    </style>
 </head>
 <body>
-<div class="container">
-<h1>👩‍🎓 Panel Estudiante</h1>
+    <div id="login">
+        <input id="name" placeholder="Tu Nombre" style="padding:15px; width:80%; margin-bottom:10px;">
+        <input id="room" placeholder="Código de Sala" style="padding:15px; width:80%;">
+        <button onclick="unirse()" style="padding:15px; width:88%; margin-top:10px; background:#3b82f6; color:white; border:none; border-radius:5px;">ENTRAR A LA BATALLA</button>
+    </div>
 
-<div id="join-form" class="join-form">
-  <h3>Ingresar a Sala</h3>
-  <input type="text" id="inputRoomId" placeholder="ID de la Sala">
-  <input type="text" id="inputStudentName" placeholder="Tu Nombre">
-  <button id="joinButton">Unirse a Sala</button>
-</div>
+    <div id="game" style="display:none">
+        <h2 id="question-text">Esperando al maestro...</h2>
+        <div id="options-container"></div>
+    </div>
 
-<div id="game-ui" class="game-ui hide">
-  <span id="socketStatus" class="socket-pending">ESTADO: Pendiente</span>
-  <div class="meta-info">
-    <p><strong>Nombre:</strong> <span id="studentNameDisplay"></span></p>
-    <p><strong>Sala:</strong> <span id="roomIdDisplay"></span></p>
-  </div>
+    <script>
+        const socket = io('http://localhost:3000/battle');
+        let myName, myRoom;
 
-  <div id="questionDisplay">Esperando pregunta...</div>
-  <button id="pressButton" disabled>Presionar!</button>
+        function unirse() {
+            myName = document.getElementById('name').value;
+            myRoom = document.getElementById('room').value.toUpperCase();
+            socket.emit('join-room', { roomId: myRoom, studentName: myName });
+            document.getElementById('login').style.display = 'none';
+            document.getElementById('game').style.display = 'block';
+        }
 
-  <hr>
-  <div class="log-container"><h3>Logs:</h3><div id="log"></div></div>
-</div>
-</div>
+        socket.on('new-question', data => {
+            document.getElementById('question-text').innerText = data.text;
+            const container = document.getElementById('options-container');
+            container.innerHTML = data.options.map(o => `
+                <button class="opt" onclick="enviar('${o.id}')">${o.text}</button>
+            `).join('');
+        });
 
-<script>
-const socketUrl = 'http://localhost:3000/battle';
-let socket;
+        function enviar(id) {
+            document.querySelectorAll('.opt').forEach(b => b.disabled = true);
+            socket.emit('submit-answer', { roomId: myRoom, studentName: myName, optionId: id });
+        }
 
-const joinForm = document.getElementById('join-form');
-const gameUI = document.getElementById('game-ui');
-const joinButton = document.getElementById('joinButton');
-const socketStatus = document.getElementById('socketStatus');
-const studentNameDisplay = document.getElementById('studentNameDisplay');
-const roomIdDisplay = document.getElementById('roomIdDisplay');
-const questionDisplay = document.getElementById('questionDisplay');
-const pressButton = document.getElementById('pressButton');
-const logElement = document.getElementById('log');
-
-let ROOM_ID, STUDENT_NAME;
-const STUDENT_ID = 'student-' + Math.random().toString(36).substring(2,6);
-
-function log(msg){ const d=document.createElement('div'); d.textContent=`[${new Date().toLocaleTimeString()}] ${msg}`; logElement.prepend(d); console.log(msg); }
-
-joinButton.addEventListener('click',()=>{
-  ROOM_ID=document.getElementById('inputRoomId').value.trim();
-  STUDENT_NAME=document.getElementById('inputStudentName').value.trim();
-  if(!ROOM_ID||!STUDENT_NAME){ alert('Debes ingresar Sala y Nombre'); return; }
-
-  joinForm.classList.add('hide');
-  gameUI.classList.remove('hide');
-  studentNameDisplay.textContent = STUDENT_NAME;
-  roomIdDisplay.textContent = ROOM_ID;
-
-  socketStatus.textContent='ESTADO: PENDIENTE';
-  socket = io(socketUrl);
-
-  socket.on('connect',()=>{
-    socketStatus.textContent='ESTADO: CONECTADO';
-    socket.emit('joinGame',{ roomId:ROOM_ID, studentId:STUDENT_ID, playerName:STUDENT_NAME, isMaster:false });
-    log('Conectado al servidor');
-  });
-
-  socket.on('disconnect',()=>{
-    socketStatus.textContent='ESTADO: DESCONECTADO';
-    log('Desconectado del servidor');
-    pressButton.disabled=true;
-  });
-
-  // Cuando llega una nueva pregunta del maestro
-  socket.on('sendQuestion',(data)=>{
-    if(data.roomId === ROOM_ID){
-      questionDisplay.textContent = data.question;
-      pressButton.disabled = false;
-      log('Pregunta recibida: ' + data.question);
-    }
-  });
-});
-
-// Enviar pulsación al servidor
-pressButton.addEventListener('click',()=>{
-  if(socket && socket.connected){
-    socket.emit('playerPressed', { roomId: ROOM_ID, studentId: STUDENT_ID, playerName: STUDENT_NAME, timestamp: Date.now() });
-    pressButton.disabled = true;
-    log('Botón presionado!');
-  }
-});
-</script>
+        socket.on('answer-wrong', () => alert("¡Incorrecto! Más suerte la próxima."));
+        socket.on('round-result', () => {
+            document.getElementById('options-container').innerHTML = "";
+            document.getElementById('question-text').innerText = "Ronda finalizada. ¡Mira el panel del maestro!";
+        });
+    </script>
 </body>
 </html>
