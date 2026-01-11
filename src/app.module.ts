@@ -15,14 +15,12 @@ import { PointsModule } from './points/points.module';
 import { RewardModule } from './reward/reward.module';
 import { QuestionModule } from './question/question.module';
 
-// 🔥 1. IMPORTACIÓN DEL GATEWAY 🔥
-// Nota: El error menciona GameBattleGateway, pero usaré GameGateway ya que es el que me proporcionaste.
-import { GameBattleGateway } from './game-battle/game-battle.gateway'; 
+// 👇 1. IMPORTAR EL MÓDULO DE LOGROS AQUÍ
+import { AchievementsModule } from './achievements/achievements.module';
 
-// 🔥 NUEVA IMPORTACIÓN NECESARIA 🔥
-// Debes importar el servicio que tu Gateway está usando.
-// Asumiendo la ruta:
-import { GameBattleService } from './game-battle/game-battle.service'; 
+// Importaciones de Batalla
+import { GameBattleGateway } from './game-battle/game-battle.gateway'; 
+import { GameBattleService } from './game-battle/game-battle.service';  
 
 @Module({
   imports: [
@@ -34,11 +32,12 @@ import { GameBattleService } from './game-battle/game-battle.service';
     PointsModule,
     RewardModule,
     QuestionModule,
+    // 👇 2. AGREGARLO AL ARRAY DE IMPORTS AQUÍ
+    AchievementsModule, 
   ],
   controllers: [AppController],
   providers: [
-    AppService,
-    // 🔥 2. AGREGAR EL SERVICIO A LOS PROVIDERS 🔥
+    AppService, 
     GameBattleGateway,
     GameBattleService, 
   ],

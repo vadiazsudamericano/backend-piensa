@@ -46,6 +46,9 @@ model User {
   pointBalances    PointBalance[]
   transactions     PointTransaction[]
   redemptions      RedemptionRequest[]
+  
+  // 🔥 ESTA LÍNEA ES VITAL PARA QUE FUNCIONE LA MIGRACIÓN 🔥
+  achievements     Achievement[]
 }
 
 // Materias/Clases
@@ -67,7 +70,7 @@ model Subject {
   pointBalances PointBalance[]
   transactions  PointTransaction[]
   rewards       Reward[]
-  questions     Question[] // <-- ¡AQUÍ ESTÁ LA LÍNEA QUE FALTABA!
+  questions     Question[] 
 }
 
 // Inscripciones (Estudiante <-> Materia)
@@ -151,12 +154,22 @@ model Question {
 
 // Modelo para las Opciones de una Pregunta
 model Option {
-  id         String   @id @default(uuid())
-  text       String   // El texto de la opción (ej: "42")
-  isCorrect  Boolean  // true si es la respuesta correcta, false si no
+  id        String   @id @default(uuid())
+  text      String   // El texto de la opción (ej: "42")
+  isCorrect Boolean  // true si es la respuesta correcta, false si no
 
   questionId String
-  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade) // Si se borra la pregunta, se borran las opciones
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade) 
 
   @@index([questionId])
+} 
+
+model Achievement {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  icon        String
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
 }

@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export class GameBattleService {
   constructor(private prisma: PrismaService) {}
 
-  // Obtener todos los bancos de un maestro con conteo de preguntas
+  // Obtener todos los bancos de un maestro
   async getTeacherSubjects(teacherId: string) {
     return await this.prisma.subject.findMany({
       where: { teacherId },
@@ -13,17 +13,17 @@ export class GameBattleService {
         _count: {
           select: { questions: true }
         }
-      }
+      },
+      orderBy: { createdAt: 'desc' }
     });
   }
 
-  // Crear un nuevo banco desde el panel
+  // Crear un banco simple (Método antiguo/simple)
   async createSubject(name: string, teacherId: string) {
     return await this.prisma.subject.create({
       data: {
         name,
-        teacher: { connect: { id: teacherId } },
-        // Ajusta estos campos según tu esquema de Prisma
+        teacher: { connect: { id: teacherId } }, 
         cycle: 'Ciclo Actual',
         year: new Date().getFullYear(),
         joinCode: Math.random().toString(36).substring(2, 6).toUpperCase(),
@@ -31,7 +31,51 @@ export class GameBattleService {
     });
   }
 
-  // Obtener una pregunta aleatoria de un banco específico
+  // 🔥 ESTE ES EL MÉTODO QUE TE FALTA Y QUE SOLUCIONA LA CARGA INFINITA 🔥
+  async createFullSubject(data: { 
+    name: string; 
+    teacherId: string; 
+    questions: { 
+      question_text: string; 
+      answers: string[]; 
+      correct_answer_index: number 
+    }[] 
+  }) {
+    // Usamos transacción: Se guarda todo (banco + preguntas + opciones) o nada
+    return await this.prisma.$transaction(async (tx) => {
+      
+      // 1. Crear el Banco
+      const newSubject = await tx.subject.create({
+        data: {
+          name: data.name,
+          teacher: { connect: { id: data.teacherId } },
+          cycle: 'Ciclo Actual', 
+          year: new Date().getFullYear(),
+          joinCode: Math.random().toString(36).substring(2, 8).toUpperCase(),
+        }
+      });
+
+      // 2. Crear preguntas y opciones
+      for (const q of data.questions) {
+        await tx.question.create({
+          data: {
+            text: q.question_text,
+            subjectId: newSubject.id,
+            options: {
+              create: q.answers.map((ansText, index) => ({
+                text: ansText,
+                isCorrect: index === q.correct_answer_index
+              }))
+            }
+          }
+        });
+      }
+
+      return newSubject;
+    });
+  }
+
+  // Obtener pregunta aleatoria
   async getRandomQuestion(subjectId: string) {
     const questions = await this.prisma.question.findMany({
       where: { subjectId },
@@ -45,7 +89,7 @@ export class GameBattleService {
     return questions[Math.floor(Math.random() * questions.length)];
   }
 
-  // Validar respuesta y sumar puntos en la DB
+  // Validar respuesta y sumar puntos
   async validateAndAssignPoints(studentName: string, optionId: string, subjectId: string, points: number) {
     const option = await this.prisma.option.findUnique({
       where: { id: optionId },
@@ -53,12 +97,10 @@ export class GameBattleService {
     });
 
     if (!option || !option.isCorrect) return { success: false };
-
-    // Buscamos al estudiante por nombre (asegúrate de que el nombre sea único o usa ID)
+ 
     const student = await this.prisma.user.findFirst({ where: { fullName: studentName } });
     if (!student) return { success: false };
-
-    // Actualizamos o creamos el balance de puntos
+ 
     const updatedBalance = await this.prisma.pointBalance.upsert({
       where: {
         studentId_subjectId: { studentId: student.id, subjectId }
