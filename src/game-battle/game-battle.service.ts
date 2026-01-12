@@ -18,7 +18,7 @@ export class GameBattleService {
     });
   }
 
-  // Crear un banco simple (Método antiguo/simple)
+  // Crear un banco simple
   async createSubject(name: string, teacherId: string) {
     return await this.prisma.subject.create({
       data: {
@@ -31,7 +31,7 @@ export class GameBattleService {
     });
   }
 
-  // 🔥 ESTE ES EL MÉTODO QUE TE FALTA Y QUE SOLUCIONA LA CARGA INFINITA 🔥
+  // Crear banco completo con preguntas (Transaccional)
   async createFullSubject(data: { 
     name: string; 
     teacherId: string; 
@@ -41,9 +41,7 @@ export class GameBattleService {
       correct_answer_index: number 
     }[] 
   }) {
-    // Usamos transacción: Se guarda todo (banco + preguntas + opciones) o nada
     return await this.prisma.$transaction(async (tx) => {
-      
       // 1. Crear el Banco
       const newSubject = await tx.subject.create({
         data: {
@@ -75,7 +73,22 @@ export class GameBattleService {
     });
   }
 
-  // Obtener pregunta aleatoria
+  // 🔥 NUEVO: Obtener TODAS las preguntas (Necesario para el modo secuencial)
+  async getAllQuestions(subjectId: string) {
+    if (!subjectId) return [];
+
+    try {
+      return await this.prisma.question.findMany({
+        where: { subjectId },
+        include: { options: true }
+      });
+    } catch (error) {
+      console.error("Error obteniendo preguntas:", error);
+      return [];
+    }
+  }
+
+  // Obtener pregunta aleatoria (Legacy / Utilidad)
   async getRandomQuestion(subjectId: string) {
     const questions = await this.prisma.question.findMany({
       where: { subjectId },
