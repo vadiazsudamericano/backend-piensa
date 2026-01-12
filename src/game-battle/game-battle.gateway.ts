@@ -8,7 +8,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { GameBattleService } from './game-battle.service';
 
-// 1. CORRECCIÓN AQUÍ: Agregamos 'name' a la interfaz
+// Interfaz del estado de la sala en memoria
 interface GameRoom {
   roomId: string;
   teacherId: string;
@@ -17,19 +17,62 @@ interface GameRoom {
   students: any[];
   currentQuestion?: any;
   totalAnswers: number;
-  name?: string; // <--- ESTO FALTABA PARA QUE NO DE ERROR
+  name?: string; 
 }
 
 @WebSocketGateway({ cors: { origin: '*' }, namespace: 'battle' })
 export class GameBattleGateway {
   @WebSocketServer() server: Server;
   
+  // Almacén en memoria de las salas activas
   private rooms = new Map<string, GameRoom>();
 
   constructor(private readonly gameService: GameBattleService) {}
 
   // =================================================================
-  // 🔥 AGREGADO: MANEJO DE BANCOS DE PREGUNTAS
+  // 🔄 NUEVO: RECONEXIÓN Y CONTROL
+  // =================================================================
+
+  @SubscribeMessage('reconnect-control')
+  async handleReconnectControl(
+    @MessageBody() data: { roomId: string; teacherId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const room = this.rooms.get(data.roomId);
+
+    // 1. Validaciones
+    if (!room) {
+      client.emit('error', 'La sala ya no existe o ha finalizado.');
+      return;
+    }
+    if (room.teacherId !== data.teacherId) {
+      client.emit('error', 'No tienes permiso para controlar esta sala.');
+      return;
+    }
+
+    // 2. Unir el nuevo socket del profesor a la sala existente
+    client.join(room.roomId);
+
+    // 3. Cargar bancos de preguntas para que el select no salga vacío
+    const subjects = await this.gameService.getTeacherSubjects(data.teacherId);
+    client.emit('subjects-list', subjects);
+
+    // 4. Enviar el estado actual de la sala (RECONEXIÓN EXITOSA)
+    client.emit('reconnect-success', {
+      roomId: room.roomId,
+      code: room.roomId,
+      name: room.name,
+      status: room.status,
+      students: room.students,
+      currentQuestion: room.currentQuestion,
+      mySubjects: subjects
+    });
+
+    console.log(`Teacher reconectado a sala: ${room.name} (${room.roomId})`);
+  }
+
+  // =================================================================
+  // BANCOS DE PREGUNTAS
   // =================================================================
 
   @SubscribeMessage('get-my-subjects')
@@ -51,6 +94,7 @@ export class GameBattleGateway {
     console.log("📝 Creando banco:", data.name);
     try {
       const newSubject = await this.gameService.createFullSubject(data); 
+      // Enviamos el ID para auto-selección
       client.emit('subject-created-success', { newSubjectId: newSubject.id }); 
       
       const subjects = await this.gameService.getTeacherSubjects(data.teacherId);
@@ -67,16 +111,14 @@ export class GameBattleGateway {
   // JUEGO (CORE)
   // =================================================================
 
-  // 2. CORRECCIÓN AQUÍ: Recibimos y manejamos el 'name'
   @SubscribeMessage('create-room')
   async handleCreateRoom(
-    @MessageBody() data: { teacherId: string; name?: string }, // Recibimos nombre opcional
+    @MessageBody() data: { teacherId: string; name?: string }, 
     @ConnectedSocket() client: Socket
   ) {
     const roomId = Math.random().toString(36).substring(2, 6).toUpperCase();
     const subjects = await this.gameService.getTeacherSubjects(data.teacherId);
     
-    // Si viene nombre úsalo, si no usa el código
     const roomName = data.name || `Sala ${roomId}`; 
 
     this.rooms.set(roomId, {
@@ -86,12 +128,11 @@ export class GameBattleGateway {
       status: 'waiting',
       students: [],
       totalAnswers: 0,
-      name: roomName // Ahora TypeScript lo permite porque actualizamos la interface arriba
+      name: roomName 
     });
 
     client.join(roomId);
     
-    // Devolvemos el nombre al frontend para el título
     client.emit('room-created', { 
       roomId, 
       code: roomId, 
