@@ -1,15 +1,20 @@
-import { IsNotEmpty, IsNumber, IsString, IsUUID, Min } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsString, IsOptional, IsUUID } from 'class-validator';
 
 export class CreateRewardDto {
+  @IsNotEmpty()
   @IsString()
-  @IsNotEmpty()
-  name: string; // Ej: "+2 Pts en Tarea"
+  name: string;
 
+  // 👇 ESTO ES LO QUE TE FALTABA
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsNotEmpty() 
   @IsNumber()
-  @Min(1) // Costo mínimo de 1 punto
-  cost: number; // Ej: 1000
+  cost: number;
 
+  @IsNotEmpty() 
   @IsUUID()
-  @IsNotEmpty()
-  subjectId: string; // ID de la materia
+  subjectId: string;
 }

@@ -115,13 +115,17 @@ model PointTransaction {
 }
 
 // Recompensas Canjeables
-model Reward {
-  id        String @id @default(uuid())
-  name      String // Ej: "+2 Pts en Tarea"
-  cost      Int
+// ... (resto del schema igual)
 
-  subjectId String
-  subject   Subject @relation(fields: [subjectId], references: [id])
+model Reward {
+  id          String @id @default(uuid())
+  name        String // Título
+  description String? // NUEVO: Para la descripción larga
+  cost        Int
+  isActive    Boolean @default(true) // NUEVO: Para activar/desactivar
+
+  subjectId   String
+  subject     Subject @relation(fields: [subjectId], references: [id])
 
   redemptions RedemptionRequest[]
 }

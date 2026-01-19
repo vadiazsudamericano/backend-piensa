@@ -39,7 +39,8 @@ export class GameBattleService {
       question_text: string; 
       answers: string[]; 
       correct_answer_index: number 
-    }[] 
+    }[];
+    cycle?: string; // 👈 1. ACEPTAMOS EL PARÁMETRO OPCIONAL AQUÍ
   }) {
     return await this.prisma.$transaction(async (tx) => {
       // 1. Crear el Banco
@@ -47,7 +48,8 @@ export class GameBattleService {
         data: {
           name: data.name,
           teacher: { connect: { id: data.teacherId } },
-          cycle: 'Ciclo Actual', 
+          // 👇 2. USAMOS EL VALOR QUE LLEGA, O 'Ciclo Actual' POR DEFECTO
+          cycle: data.cycle || 'Ciclo Actual', 
           year: new Date().getFullYear(),
           joinCode: Math.random().toString(36).substring(2, 8).toUpperCase(),
         }
@@ -112,7 +114,7 @@ export class GameBattleService {
     if (!option || !option.isCorrect) return { success: false };
  
     const student = await this.prisma.user.findFirst({ where: { fullName: studentName } });
-    if (!student) return { success: false };
+    if (!student) return { success: false }; // O true con 0 puntos si es invitado
  
     const updatedBalance = await this.prisma.pointBalance.upsert({
       where: {

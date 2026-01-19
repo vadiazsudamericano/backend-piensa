@@ -17,7 +17,7 @@ interface GameRoom {
   currentQuestion?: any;
   totalAnswers: number;
   name?: string;
-  usedQuestionIds: Set<string>; // NUEVO: Rastreo de preguntas usadas
+  usedQuestionIds: Set<string>; 
 }
 
 @WebSocketGateway({ cors: { origin: '*' }, namespace: 'battle' })
@@ -28,22 +28,13 @@ export class GameBattleGateway {
 
   constructor(private readonly gameService: GameBattleService) {}
 
-  // ... (MÉTODOS DE BANCOS Y RECONEXIÓN IGUALES - OMITIDOS PARA BREVEDAD, DEJARLOS COMO ESTABAN) ...
-  // Si necesitas que los repita, avísame, pero asumo que ya los tienes bien.
-  // Aquí solo modifico la lógica de juego.
-
-  // ... (handleReconnectControl, handleGetSubjects, handleCreateFullSubject IGUALES) ...
   @SubscribeMessage('reconnect-control')
   async handleReconnectControl(@MessageBody() data: { roomId: string; teacherId: string }, @ConnectedSocket() client: Socket) {
-      // ... (código previo) ...
-      // Asegúrate de enviar también 'usedQuestionIds' o el conteo si quieres mostrar progreso al reconectar
-      // Por ahora lo dejamos simple.
       const room = this.rooms.get(data.roomId);
       if (!room || room.teacherId !== data.teacherId) return client.emit('error', 'Error de acceso');
       client.join(room.roomId);
       const subjects = await this.gameService.getTeacherSubjects(data.teacherId);
       
-      // Enviamos estado de reconexión
       client.emit('reconnect-success', {
           roomId: room.roomId,
           code: room.roomId,
@@ -52,7 +43,6 @@ export class GameBattleGateway {
           students: room.students,
           currentQuestion: room.currentQuestion,
           mySubjects: subjects,
-          // Enviamos cuántas llevamos
           questionsPlayed: room.usedQuestionIds.size
       });
   }
@@ -66,19 +56,26 @@ export class GameBattleGateway {
     } catch (e) { console.error(e); }
   }
 
+  // 👇 CORRECCIÓN AQUÍ: Pasamos el 'cycle' al servicio
   @SubscribeMessage('create-full-subject')
   async handleCreateFullSubject(@MessageBody() data: any, @ConnectedSocket() client: Socket) {
     try {
-      const newSubject = await this.gameService.createFullSubject(data); 
+      const newSubject = await this.gameService.createFullSubject({
+          name: data.name,
+          teacherId: data.teacherId,
+          questions: data.questions,
+          cycle: data.cycle // <--- IMPORTANTE: Pasamos el ciclo (BANK o normal)
+      }); 
+      
       client.emit('subject-created-success', { newSubjectId: newSubject.id }); 
+      
       const subjects = await this.gameService.getTeacherSubjects(data.teacherId);
       client.emit('subjects-updated', { mySubjects: subjects });
       client.emit('subjects-list', subjects); 
     } catch (e) { client.emit('error', 'Error: ' + e.message); }
   }
 
-
-  // --- JUEGO CORE MODIFICADO ---
+  // --- JUEGO CORE ---
 
   @SubscribeMessage('create-room')
   async handleCreateRoom(
@@ -98,7 +95,7 @@ export class GameBattleGateway {
       students: [],
       totalAnswers: 0,
       name: roomName,
-      usedQuestionIds: new Set() // Inicializamos vacío
+      usedQuestionIds: new Set() 
     });
 
     client.join(roomId);
@@ -143,41 +140,24 @@ export class GameBattleGateway {
     const room = this.rooms.get(data.roomId.toUpperCase());
     if (!room) return;
 
-    // Si viene subjectId (primera vez o cambio), lo seteamos
     if (data.subjectId) {
         room.subjectId = data.subjectId;
-        room.usedQuestionIds.clear(); // Reiniciamos historial si cambia de banco
+        room.usedQuestionIds.clear(); 
     }
 
     try {
-      // 1. Obtener TODAS las preguntas del banco (necesitas un método en service para esto, 
-      //    o usar getRandomQuestion pero filtrando. Asumiré que getRandomQuestion puede devolver una que no esté en la lista negra
-      //    o mejor aún, obtengamos todas y filtremos aquí).
+      // Usamos el método getAllQuestions del servicio
+      const allQuestions = await this.gameService.getAllQuestions(room.subjectId);
       
-      // OPCIÓN A: Pedir al servicio una pregunta aleatoria EXCLUYENDO las usadas
-      // Necesitas modificar tu GameBattleService para aceptar 'excludeIds'.
-      // Como no tengo tu service, haré una lógica simulada asumiendo que puedes obtener todas las preguntas del subject.
-      
-      // Supongamos que tienes un método 'getQuestionsBySubject(subjectId)'
-      // Si no lo tienes, usa getRandomQuestion y reza para que no se repita, pero para hacerlo bien:
-      
-      const allQuestions = await this.gameService.getAllQuestions(room.subjectId); // <--- NECESITAS ESTE MÉTODO EN TU SERVICE
-      // Si no tienes getAllQuestions, tendrás que implementar una lógica de "intentos" con getRandomQuestion, pero es sucio.
-      // ASUMIREMOS QUE TIENES (O CREARÁS) getAllQuestions.
-      
-      // Filtramos las disponibles
       const availableQuestions = allQuestions.filter((q: any) => !room.usedQuestionIds.has(q.id));
 
       if (availableQuestions.length === 0) {
-          // YA NO HAY PREGUNTAS -> FIN DEL JUEGO O AVISO
           this.server.to(room.roomId).emit('no-more-questions');
           return;
       }
 
-      // Elegimos una al azar de las disponibles
       const question = availableQuestions[Math.floor(Math.random() * availableQuestions.length)];
       
-      // Marcamos como usada
       room.usedQuestionIds.add(question.id);
 
       room.status = 'active';
@@ -189,13 +169,12 @@ export class GameBattleGateway {
         s.lastPointsEarned = 0;
       });
 
-      // Enviamos la pregunta + info de progreso
       this.server.to(room.roomId).emit('new-question', {
         text: question.text,
         options: question.options.map((o: any) => ({ id: o.id, text: o.text })),
         duration: 20,
-        questionNumber: room.usedQuestionIds.size, // Cuál vamos
-        totalQuestions: allQuestions.length // Total del banco
+        questionNumber: room.usedQuestionIds.size, 
+        totalQuestions: allQuestions.length 
       });
       
       this.server.to(room.roomId).emit('room-update', { status: 'active', totalAnswers: 0 });
@@ -205,10 +184,8 @@ export class GameBattleGateway {
     }
   }
 
-  // ... (submit-answer, time-up, finishRound, end-battle IGUALES) ...
   @SubscribeMessage('submit-answer')
   async handleSubmitAnswer(@MessageBody() data: { roomId: string, studentName: string, optionId: string }, @ConnectedSocket() client: Socket) {
-      // (Mismo código de antes)
       const room = this.rooms.get(data.roomId.toUpperCase());
       if (!room || room.status !== 'active') return;
       const student = room.students.find(s => s.name === data.studentName);
