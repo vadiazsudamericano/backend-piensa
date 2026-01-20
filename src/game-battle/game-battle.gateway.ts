@@ -56,7 +56,6 @@ export class GameBattleGateway {
     } catch (e) { console.error(e); }
   }
 
-  // 👇 CORRECCIÓN AQUÍ: Pasamos el 'cycle' al servicio
   @SubscribeMessage('create-full-subject')
   async handleCreateFullSubject(@MessageBody() data: any, @ConnectedSocket() client: Socket) {
     try {
@@ -64,7 +63,7 @@ export class GameBattleGateway {
           name: data.name,
           teacherId: data.teacherId,
           questions: data.questions,
-          cycle: data.cycle // <--- IMPORTANTE: Pasamos el ciclo (BANK o normal)
+          cycle: data.cycle 
       }); 
       
       client.emit('subject-created-success', { newSubjectId: newSubject.id }); 
@@ -75,14 +74,15 @@ export class GameBattleGateway {
     } catch (e) { client.emit('error', 'Error: ' + e.message); }
   }
 
-  // --- JUEGO CORE ---
+  // --- JUEGO CORE (MODIFICADO PARA ALL FOR ALL) ---
 
   @SubscribeMessage('create-room')
   async handleCreateRoom(
-    @MessageBody() data: { teacherId: string; name?: string }, 
+    @MessageBody() data: { teacherId: string; name?: string; customPin?: string }, // Se añade customPin
     @ConnectedSocket() client: Socket
   ) {
-    const roomId = Math.random().toString(36).substring(2, 6).toUpperCase();
+    // CORRECCIÓN: Si All for All envía un customPin, usamos ese. Si no, el aleatorio.
+    const roomId = data.customPin ? data.customPin.toUpperCase() : Math.random().toString(36).substring(2, 6).toUpperCase();
     const subjects = await this.gameService.getTeacherSubjects(data.teacherId);
     
     const roomName = data.name || `Sala ${roomId}`; 
@@ -110,7 +110,11 @@ export class GameBattleGateway {
 
   @SubscribeMessage('join-room')
   handleJoinRoom(@MessageBody() data: { roomId: string, studentName: string }, @ConnectedSocket() client: Socket) {
-    const room = this.rooms.get(data.roomId.toUpperCase());
+    // CORRECCIÓN: Forzamos roomId a string antes de toUpperCase para evitar el error TypeError
+    if (!data.roomId) return client.emit('error', 'PIN requerido');
+    const roomId = String(data.roomId).toUpperCase();
+    
+    const room = this.rooms.get(roomId);
     if (!room) return client.emit('error', 'Sala no encontrada');
 
     let student = room.students.find(s => s.name === data.studentName);
@@ -131,8 +135,20 @@ export class GameBattleGateway {
     client.join(room.roomId);
     this.server.to(room.roomId).emit('room-update', { 
       students: room.students,
-      status: room.status 
+      status: room.status,
+      success: true // Ayuda al frontend a confirmar
     });
+  }
+
+  // NUEVO: Manejador para iniciar el reto de colores en All For All
+  @SubscribeMessage('start-all-for-all')
+  handleStartAllForAll(@MessageBody() data: { roomId: string, config: any }) {
+    const roomId = String(data.roomId).toUpperCase();
+    const room = this.rooms.get(roomId);
+    if (room) {
+      // Reenvía la configuración (palabra, color, modo) a todos los alumnos
+      this.server.to(room.roomId).emit('start-all-for-all', data);
+    }
   }
 
   @SubscribeMessage('start-question')
@@ -146,9 +162,7 @@ export class GameBattleGateway {
     }
 
     try {
-      // Usamos el método getAllQuestions del servicio
       const allQuestions = await this.gameService.getAllQuestions(room.subjectId);
-      
       const availableQuestions = allQuestions.filter((q: any) => !room.usedQuestionIds.has(q.id));
 
       if (availableQuestions.length === 0) {
@@ -157,7 +171,6 @@ export class GameBattleGateway {
       }
 
       const question = availableQuestions[Math.floor(Math.random() * availableQuestions.length)];
-      
       room.usedQuestionIds.add(question.id);
 
       room.status = 'active';
@@ -185,11 +198,25 @@ export class GameBattleGateway {
   }
 
   @SubscribeMessage('submit-answer')
-  async handleSubmitAnswer(@MessageBody() data: { roomId: string, studentName: string, optionId: string }, @ConnectedSocket() client: Socket) {
+  async handleSubmitAnswer(@MessageBody() data: { roomId: string, studentName: string, optionId: string, isCorrect?: boolean }, @ConnectedSocket() client: Socket) {
       const room = this.rooms.get(data.roomId.toUpperCase());
-      if (!room || room.status !== 'active') return;
+      if (!room) return;
+
       const student = room.students.find(s => s.name === data.studentName);
-      if (!student || student.hasAnswered) return;
+      if (!student) return;
+
+      // Lógica para All For All (si viene isCorrect directo)
+      if (data.isCorrect !== undefined) {
+          student.score += data.isCorrect ? 100 : 0;
+          student.lastAnswerCorrect = data.isCorrect;
+          student.lastPointsEarned = data.isCorrect ? 100 : 0;
+          client.emit('answer-received');
+          this.server.to(room.roomId).emit('room-update', { students: room.students });
+          return;
+      }
+
+      // Lógica para Batalla Normal
+      if (room.status !== 'active' || student.hasAnswered) return;
       student.hasAnswered = true;
       room.totalAnswers++;
       const result = await this.gameService.validateAndAssignPoints(data.studentName, data.optionId, room.subjectId, 100);
