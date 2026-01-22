@@ -5,16 +5,14 @@ import { IoAdapter } from '@nestjs/platform-socket.io';
 import { ServerOptions } from 'socket.io';
 
 /**
- * Extends IoAdapter to configure CORS directly on the WebSocket server.
- * This is necessary because app.enableCors() only applies to HTTP/REST, not to WS.
+ * Extends IoAdapter to configure CORS directamente en el servidor WebSocket.
  */
 class SocketIoAdapter extends IoAdapter {
   createIOServer(port: number, options?: ServerOptions): any {
     const server = super.createIOServer(port, {
       ...options,
-      // CORS configuration for the WebSocket adapter
       cors: {
-        origin: '*', // Allow any origin for testing purposes
+        origin: '*', // Permitir todos los orígenes para la conexión desde la APK
         methods: ['GET', 'POST'],
         credentials: true
       },
@@ -26,7 +24,7 @@ class SocketIoAdapter extends IoAdapter {
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // 1. Activate global validation
+  // 1. Activar validación global
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -35,16 +33,23 @@ async function bootstrap() {
     }),
   );
 
-  // 2. Activate CORS for HTTP requests
-  app.enableCors(); 
+  // 2. Activar CORS para peticiones HTTP
+  // 🔥 Ajustado para mayor compatibilidad con dispositivos móviles
+  app.enableCors({
+    origin: '*',
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    credentials: true,
+  }); 
   
-  // 3. Use the Socket.IO adapter with CORS configured
+  // 3. Usar el adaptador Socket.IO configurado
   app.useWebSocketAdapter(new SocketIoAdapter(app)); 
 
+  // 🔥 Railway requiere escuchar en 0.0.0.0 para ser accesible externamente
   const PORT = process.env.PORT || 3000;
-  await app.listen(PORT);
+  await app.listen(PORT, '0.0.0.0');
   
-  console.log(`🚀 Application is running on: ${await app.getUrl()}`);
+  // Modificamos el log para que no falle al intentar obtener URL interna en Railway
+  console.log(`🚀 Servidor corriendo en el puerto: ${PORT}`);
 }
 
 bootstrap();
