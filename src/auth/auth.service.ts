@@ -5,6 +5,7 @@ import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthDto } from './dto/auth.dto';
 import { CreateUserDto } from './dto/create-user.dto';
+import { EditUserDto } from './dto/edit-user.dto'; // 👈 Asegúrate de tener este import
 import * as bcrypt from 'bcrypt';
 import { Role } from '@prisma/client';
 
@@ -17,28 +18,25 @@ export class AuthService {
   ) {}
 
   /**
-   * REGISTRO DE NUEVO USUARIO
-   * @param dto Datos del nuevo usuario (email, pass, nombre, rol)
+   * REGISTRO
    */
   async signup(dto: CreateUserDto) {
-    // Encriptar la contraseña
     const hash = await bcrypt.hash(dto.password, 10);
+    const studentCode = await this.generateUniqueCode(5);
 
     try {
-      // Guardar el nuevo usuario en la DB
       const user = await this.prisma.user.create({
         data: {
           email: dto.email,
           password: hash,
           fullName: dto.fullName,
-          role: dto.role || 'STUDENT', // Por defecto 'STUDENT'
+          role: dto.role || 'STUDENT',
+          studentCode: studentCode,
         },
       });
 
-      // Devolvuelve token de sesion
-      return this.signToken(user.id, user.email, user.role);
+      return this.signToken(user.id, user.email, user.role, user.studentCode);
     } catch (error) {
-      // Maneja error si el email ya existe
       if (error instanceof PrismaClientKnownRequestError) {
         if (error.code === 'P2002') {
           throw new ForbiddenException('Este email ya está en uso');
@@ -49,52 +47,81 @@ export class AuthService {
   }
 
   /**
-   * INICIO DE SESIÓN
-   * @param dto Credenciales (email, password)
+   * LOGIN
    */
   async signin(dto: AuthDto) {
-    // Encontrar al usuario por email
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
 
-    // Si no existe, lanzar error
-    if (!user) {
-      throw new ForbiddenException('Credenciales incorrectas');
-    }
+    if (!user) throw new ForbiddenException('Credenciales incorrectas');
 
-    // Comparar contraseñas
     const pwMatches = await bcrypt.compare(dto.password, user.password);
 
-    // Si no coinciden, lanzar error
-    if (!pwMatches) {
-      throw new ForbiddenException('Credenciales incorrectas');
-    }
+    if (!pwMatches) throw new ForbiddenException('Credenciales incorrectas');
 
-    // Devolver un token de sesión
-    return this.signToken(user.id, user.email, user.role);
+    return this.signToken(user.id, user.email, user.role, user.studentCode);
   }
 
- // Función auxiliar para firmar el token JWT
+  /**
+   * 🔥 EDITAR USUARIO (CORREGIDO) 🔥
+   */
+  async editUser(userId: string, dto: EditUserDto) {
+    const user = await this.prisma.user.update({
+      where: {
+        id: userId,
+      },
+      data: {
+        ...dto,
+      },
+    });
+
+    // 🔴 ELIMINADO: delete user.hash; (Esto causaba el error)
+    delete user.password; // Solo borramos el password para no devolverlo
+    
+    return user;
+  }
+
+  // --- TOKEN ---
   private async signToken(
-    userId: string,
-    email: string,
+    userId: string, 
+    email: string, 
     role: Role,
+    studentCode?: string 
   ): Promise<{ access_token: string }> {
-    const payload = {
-      sub: userId,
-      email,
+    
+    const payload = { 
+      sub: userId, 
+      email, 
       role,
+      studentCode 
     };
+    
     const secret = this.config.get('JWT_SECRET');
 
     const token = await this.jwt.signAsync(payload, {
-      expiresIn: '7d', // Token válido por 7 días
+      expiresIn: '7d',
       secret: secret,
     });
 
-    return {
-      access_token: token,
-    };
+    return { access_token: token };
+  }
+
+  private async generateUniqueCode(length: number): Promise<string> {
+    const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; 
+    let isUnique = false;
+    let code = '';
+
+    while (!isUnique) {
+      code = '';
+      for (let i = 0; i < length; i++) {
+        code += characters.charAt(Math.floor(Math.random() * characters.length));
+      }
+      const existingUser = await this.prisma.user.findUnique({
+        where: { studentCode: code },
+      });
+      if (!existingUser) isUnique = true;
+    }
+    return code;
   }
 }

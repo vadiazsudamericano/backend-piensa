@@ -8,15 +8,12 @@ export class PointsService {
   constructor(private prisma: PrismaService) {}
 
   async assignPoints(teacherId: string, dto: AssignPointsDto) {
-    const amountToAssign = dto.amount || 100; // Default 100 puntos
+    const amountToAssign = dto.amount || 100;
 
-    // Verificaciones de Seguridad
-
-    // 1. Verificar que la materia existe y que el profesor SÍ es dueño de esa materia
     const subject = await this.prisma.subject.findFirst({
       where: {
         id: dto.subjectId,
-        teacherId: teacherId, //  Solo el profesor dueño puede dar puntos
+        teacherId: teacherId, 
       },
     });
 
@@ -26,61 +23,71 @@ export class PointsService {
       );
     }
 
-    // 2. Verificar que el estudiante esté inscrito en esa materia
+    const student = await this.prisma.user.findUnique({
+      where: { studentCode: dto.studentCode }
+    });
+
+    if (!student) {
+      throw new NotFoundException('Student not found');
+    }
+
     const enrollment = await this.prisma.enrollment.findFirst({
       where: {
-        studentId: dto.studentId,
+        studentId: student.id, 
         subjectId: dto.subjectId,
       },
     });
 
     if (!enrollment) {
-      throw new NotFoundException(
-        'El estudiante no está inscrito en esta materia',
-      );
+      throw new NotFoundException('Student not enrolled');
     }
-
-    // Lógica de Asignación 
-    // Usamos una transacción de Prisma para asegurar que ambas operaciones (actualizar saldo y crear historial)
-    // ocurran correctamente, o ninguna ocurra.
 
     try {
       const transaction = await this.prisma.$transaction(async (prisma) => {
-        // 1. Actualizar el saldo del estudiante incrementar
-        const pointBalance = await prisma.pointBalance.update({
-          where: {
-            studentId_subjectId: {
-              studentId: dto.studentId,
-              subjectId: dto.subjectId,
-            },
-          },
-          data: {
-            amount: {
-              increment: amountToAssign,
-            },
-          },
+        // A. Actualizar el saldo (PointBalance)
+        const balance = await prisma.pointBalance.findUnique({
+             where: {
+                studentId_subjectId: {
+                    studentId: student.id,
+                    subjectId: dto.subjectId,
+                }
+             }
         });
 
-        // 2. Crear un registro en el historial de transacciones
+        let updatedBalance;
+        
+        if (balance) {
+            updatedBalance = await prisma.pointBalance.update({
+                where: { id: balance.id },
+                data: { amount: { increment: amountToAssign } }
+            });
+        } else {
+            updatedBalance = await prisma.pointBalance.create({
+                data: {
+                    studentId: student.id,
+                    subjectId: dto.subjectId,
+                    amount: amountToAssign
+                }
+            });
+        }
+
+        // B. Crear registro en el historial (PointTransaction)
         await prisma.pointTransaction.create({
           data: {
-            amount: amountToAssign, // Positivo porque es ganado
+            amount: amountToAssign,
             type: TransactionType.EARNED,
             reason: dto.reason || 'Puntos asignados por profesor',
-            studentId: dto.studentId,
+            studentId: student.id,
             subjectId: dto.subjectId,
           },
         });
 
-        return pointBalance; // Devolvemos el saldo actualizado
+        return updatedBalance; 
       });
 
       return transaction;
+
     } catch (error) {
-      // Manejar el caso donde el PointBalance no existe (aunque no debería pasar si 'join' funcionó)
-      if (error.code === 'P2025') { 
-        throw new NotFoundException('No se encontró el saldo de puntos para este estudiante en esta materia');
-      }
       throw error;
     }
   }

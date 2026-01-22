@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Patch, Param, Post, UseGuards } from '@nestjs/common';
-import { Role } from '@prisma/client'; 
+import { Role, RedemptionStatus } from '@prisma/client'; 
 import { GetUser } from '../auth/decorator/get-user.decorator';
 import { Roles } from '../auth/decorator/roles.decorator'; 
 import { JwtGuard } from '../auth/guard/jwt.guard';
@@ -19,11 +19,28 @@ export class RewardController {
     return this.rewardService.createReward(teacherId, dto);
   }
 
-  // OJO: Esta ruta es para que el profesor vea SUS premios en el dashboard
   @Get('teacher') 
   @Roles(Role.TEACHER)
   getMyRewards(@GetUser('id') teacherId: string) {
     return this.rewardService.getRewardsByTeacher(teacherId);
+  }
+
+  // 🔥 NUEVO ENDPOINT: Para que el profesor vea canjes pendientes (CAMPANA)
+  @Get('teacher/pending')
+  @Roles(Role.TEACHER)
+  getPendingRedemptions(@GetUser('id') teacherId: string) {
+    return this.rewardService.getPendingRedemptions(teacherId);
+  }
+
+  // 🔥 NUEVO ENDPOINT: Para dar el Visto (Aprobar) o X (Rechazar)
+  @Patch('teacher/handle-request/:id')
+  @Roles(Role.TEACHER)
+  handleRequest(
+    @GetUser('id') teacherId: string,
+    @Param('id') requestId: string,
+    @Body('status') status: RedemptionStatus,
+  ) {
+    return this.rewardService.handleRedemption(teacherId, requestId, status);
   }
 
   @Patch(':id')
@@ -46,5 +63,17 @@ export class RewardController {
   @Roles(Role.STUDENT)
   redeem(@GetUser('id') studentId: string, @Body() dto: RedeemRewardDto) {
     return this.rewardService.redeemReward(studentId, dto);
+  }
+
+  // 🔥 NUEVO ENDPOINT: Para la campana del estudiante (Notificaciones)
+  @Get('student/my-requests')
+  @Roles(Role.STUDENT)
+  getMyRequests(@GetUser('id') studentId: string) {
+    return this.rewardService.getStudentRedemptions(studentId);
+  }
+
+  @Get('subject/:subjectId')
+  getRewardsBySubject(@Param('subjectId') subjectId: string) {
+    return this.rewardService.findAllBySubject(subjectId);
   }
 }

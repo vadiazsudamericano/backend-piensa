@@ -32,6 +32,9 @@ model User {
   password  String
   fullName  String
   role      Role     @default(STUDENT)
+  
+  // 🔥 NUEVO CAMPO: Código corto único (Ej: "A7X92")
+  studentCode String? @unique  // 👈 AGREGAR ESTO
 
   // Perfil extra para Docentes (Cartas)
   bio       String?
@@ -40,14 +43,12 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relaciones Inversas
+  // ... (resto de relaciones igual)
   subjectsTeaching Subject[]         @relation("TeacherSubjects")
   enrollments      Enrollment[]
   pointBalances    PointBalance[]
   transactions     PointTransaction[]
-  redemptions      RedemptionRequest[]
-  
-  // 🔥 ESTA LÍNEA ES VITAL PARA QUE FUNCIONE LA MIGRACIÓN 🔥
+  redemptions      RedemptionRequest[]  
   achievements     Achievement[]
 }
 

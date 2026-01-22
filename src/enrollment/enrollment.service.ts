@@ -1,12 +1,12 @@
-import {ForbiddenException,Injectable,NotFoundException,} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class EnrollmentService {
   constructor(private prisma: PrismaService) {}
 
+  // --- UNIRSE A UNA MATERIA ---
   async joinSubject(studentId: string, joinCode: string) {
-    // Busca la materia usando el codigo
     const subject = await this.prisma.subject.findUnique({
       where: { joinCode },
     });
@@ -15,47 +15,111 @@ export class EnrollmentService {
       throw new NotFoundException('Materia no encontrada con ese código');
     }
 
-    // Verifica que el estudiante no esté ya inscrito
     const existingEnrollment = await this.prisma.enrollment.findFirst({
-      where: {
-        studentId: studentId,
-        subjectId: subject.id,
-      },
+      where: { studentId, subjectId: subject.id },
     });
 
     if (existingEnrollment) {
-      throw new ForbiddenException('Ya estás inscrito en esta materia');
+      return this.prisma.enrollment.findUnique({
+        where: { id: existingEnrollment.id },
+        include: {
+          subject: { include: { teacher: true } } 
+        }
+      });
     }
 
-    // Crea la inscripción 
     const enrollment = await this.prisma.enrollment.create({
-      data: {
-        studentId: studentId,
-        subjectId: subject.id,
-      },
+      data: { studentId, subjectId: subject.id },
+      include: { 
+        subject: { include: { teacher: true } }
+      }
     });
 
-    // Crea el saldo de puntos inicial para esa materia
+    // Saldo inicial
     await this.prisma.pointBalance.create({
-      data: {
-        studentId: studentId,
-        subjectId: subject.id,
-        amount: 0, // Inicia con 0 puntos
-      },
+      data: { studentId, subjectId: subject.id, amount: 0 },
     });
 
     return enrollment;
   }
 
+  // --- VER MIS MATERIAS (DASHBOARD ESTUDIANTE) ---
+  // 🔥 MODIFICADO: Ahora inyectamos el saldo real de PointBalance en el objeto enrollment
   async getMyEnrolledSubjects(studentId: string) {
-    // Devuelve las materias en las que el estudiante está inscrito
-    return this.prisma.enrollment.findMany({
-      where: {
-        studentId: studentId,
-      },
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: { studentId },
+      orderBy: { joinedAt: 'desc' }, 
       include: {
-        subject: true, // Incluye los detalles de la materia
+        subject: {
+          include: {
+            teacher: {
+              select: { id: true, fullName: true, avatarUrl: true }
+            }
+          }
+        }, 
       },
+    });
+
+    // Buscamos los balances de puntos de este estudiante
+    const balances = await this.prisma.pointBalance.findMany({
+      where: { studentId }
+    });
+
+    // Combinamos los datos: reemplazamos accumulatedPoints (de enrollment) por amount (de PointBalance)
+    return enrollments.map(e => {
+      const balance = balances.find(b => b.subjectId === e.subjectId);
+      return {
+        ...e,
+        accumulatedPoints: balance ? balance.amount : 0 // Esto es lo que lee el frontend
+      };
+    });
+  }
+
+  // --- VER ESTUDIANTES (PARA PROFESOR) ---
+  async getStudentsBySubject(subjectId: string) {
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: { subjectId },
+      include: {
+        student: {
+          select: { id: true, fullName: true, email: true, avatarUrl: true, studentCode: true }
+        }
+      },
+      orderBy: { joinedAt: 'desc' }
+    });
+
+    const studentIds = enrollments.map(e => e.studentId);
+    const balances = await this.prisma.pointBalance.findMany({
+      where: {
+        subjectId: subjectId,
+        studentId: { in: studentIds }
+      }
+    });
+
+    return enrollments.map(e => {
+      const balance = balances.find(b => b.studentId === e.studentId);
+      return { 
+        ...e.student, 
+        joinedAt: e.joinedAt,
+        accumulatedPoints: balance ? balance.amount : 0 
+      };
+    });
+  }
+
+  // --- SALIR DE LA CLASE ---
+  async leaveSubject(studentId: string, subjectId: string) {
+    const enrollment = await this.prisma.enrollment.findFirst({
+      where: { 
+        studentId: studentId,
+        subjectId: subjectId
+      }
+    });
+
+    if (!enrollment) {
+      throw new NotFoundException('No estás inscrito en esta materia o ya saliste de ella.');
+    }
+
+    return this.prisma.enrollment.delete({
+      where: { id: enrollment.id }
     });
   }
 }

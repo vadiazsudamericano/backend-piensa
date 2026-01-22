@@ -13,10 +13,9 @@ import { SubjectModule } from './subject/subject.module';
 import { EnrollmentModule } from './enrollment/enrollment.module';
 import { PointsModule } from './points/points.module';
 import { RewardModule } from './reward/reward.module';
-import { QuestionModule } from './question/question.module';
-
-// 👇 1. IMPORTAR EL MÓDULO DE LOGROS AQUÍ
+import { QuestionModule } from './question/question.module'; 
 import { AchievementsModule } from './achievements/achievements.module';
+import { UserModule } from './user/user.module';
 
 // Importaciones de Batalla
 import { GameBattleGateway } from './game-battle/game-battle.gateway'; 
@@ -27,13 +26,13 @@ import { GameBattleService } from './game-battle/game-battle.service';
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     AuthModule,
+    UserModule, // 👈 2. AGREGADO AQUÍ
     SubjectModule,
     EnrollmentModule,
     PointsModule,
     RewardModule,
     QuestionModule,
-    // 👇 2. AGREGARLO AL ARRAY DE IMPORTS AQUÍ
-    AchievementsModule, 
+    AchievementsModule,  
   ],
   controllers: [AppController],
   providers: [

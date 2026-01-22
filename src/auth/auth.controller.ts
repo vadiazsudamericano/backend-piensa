@@ -6,10 +6,12 @@ import {
   HttpStatus,
   UseGuards,
   Get,
+  Patch, // 👈 Importar Patch
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthDto } from './dto/auth.dto';
 import { CreateUserDto } from './dto/create-user.dto';
+import { EditUserDto } from './dto/edit-user.dto'; // 👈 Importar DTO
 import { JwtGuard } from './guard/jwt.guard';
 import { GetUser } from './decorator/get-user.decorator';
 import { User } from '@prisma/client';
@@ -31,7 +33,14 @@ export class AuthController {
 
   @UseGuards(JwtGuard)
   @Get('me')
-  getMe(@GetUser() user: User) { // Usamos el decorador personalizado
+  getMe(@GetUser() user: User) {
     return user;
+  }
+
+  // 🔥 NUEVO ENDPOINT: Editar Perfil
+  @UseGuards(JwtGuard)
+  @Patch('me')
+  editUser(@GetUser('id') userId: string, @Body() dto: EditUserDto) {
+    return this.authService.editUser(userId, dto);
   }
 }

@@ -10,7 +10,6 @@ export class RewardService {
 
   // 1. Crear Recompensa
   async createReward(teacherId: string, dto: CreateRewardDto) {
-    // Verificar que la materia pertenece al profesor
     const subject = await this.prisma.subject.findFirst({
       where: { id: dto.subjectId, teacherId },
     });
@@ -20,7 +19,7 @@ export class RewardService {
     return this.prisma.reward.create({
       data: {
         name: dto.name,
-        description: dto.description, // Ahora sí funcionará
+        description: dto.description, 
         cost: dto.cost,
         subjectId: dto.subjectId,
         isActive: true,
@@ -117,6 +116,99 @@ export class RewardService {
           status: RedemptionStatus.PENDING,
         },
       });
+    });
+  }
+
+  // 6. Obtener recompensas por materia (Para estudiantes)
+  async findAllBySubject(subjectId: string) {
+    return this.prisma.reward.findMany({
+      where: { 
+        subjectId: subjectId,
+        isActive: true 
+      },
+      orderBy: {
+        cost: 'asc',
+      },
+    });
+  }
+
+  // 🔥 NUEVOS MÉTODOS PARA NOTIFICACIONES Y APROBACIÓN 🔥
+
+  // 7. Obtener canjes pendientes para el profesor
+  async getPendingRedemptions(teacherId: string) {
+    return this.prisma.redemptionRequest.findMany({
+      where: {
+        reward: { subject: { teacherId } },
+        status: RedemptionStatus.PENDING,
+      },
+      include: {
+        student: { select: { fullName: true, avatarUrl: true, studentCode: true } },
+        reward: { select: { name: true, cost: true, subject: { select: { name: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  // 8. Aprobar o Rechazar Canje
+  async handleRedemption(teacherId: string, requestId: string, status: RedemptionStatus) {
+    const request = await this.prisma.redemptionRequest.findUnique({
+      where: { id: requestId },
+      include: { reward: { include: { subject: true } } },
+    });
+
+    if (!request || request.reward.subject.teacherId !== teacherId) {
+      throw new ForbiddenException('No tienes permiso para gestionar esta solicitud');
+    }
+
+    if (status === RedemptionStatus.APPROVED) {
+      return this.prisma.redemptionRequest.update({
+        where: { id: requestId },
+        data: { status: RedemptionStatus.APPROVED },
+      });
+    }
+
+    if (status === RedemptionStatus.REJECTED) {
+      return this.prisma.$transaction(async (tx) => {
+        // Devolver puntos al alumno
+        await tx.pointBalance.update({
+          where: {
+            studentId_subjectId: {
+              studentId: request.studentId,
+              subjectId: request.reward.subjectId,
+            },
+          },
+          data: { amount: { increment: request.reward.cost } },
+        });
+
+        // Crear registro de devolución en historial
+        await tx.pointTransaction.create({
+          data: {
+            amount: request.reward.cost,
+            type: TransactionType.EARNED,
+            reason: `Devolución: ${request.reward.name} (Rechazado)`,
+            studentId: request.studentId,
+            subjectId: request.reward.subjectId,
+          },
+        });
+
+        // Marcar solicitud como rechazada
+        return tx.redemptionRequest.update({
+          where: { id: requestId },
+          data: { status: RedemptionStatus.REJECTED },
+        });
+      });
+    }
+  }
+
+  // 9. Obtener canjes del estudiante (Para su campana de notificaciones)
+  async getStudentRedemptions(studentId: string) {
+    return this.prisma.redemptionRequest.findMany({
+      where: { studentId },
+      include: {
+        reward: { select: { name: true, subject: { select: { name: true } } } },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 10, // Últimos 10 para no saturar
     });
   }
 }

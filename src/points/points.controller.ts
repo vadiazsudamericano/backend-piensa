@@ -1,5 +1,5 @@
 import { Body, Controller, Post, UseGuards, Get, Query } from '@nestjs/common';
-import { Role, User } from '@prisma/client'; 
+import { Role } from '@prisma/client'; 
 import { GetUser } from '../auth/decorator/get-user.decorator';
 import { Roles } from '../auth/decorator/roles.decorator';
 import { JwtGuard } from '../auth/guard/jwt.guard';
@@ -13,7 +13,7 @@ export class PointsController {
   constructor(private pointsService: PointsService) {}
 
   @Post('assign')
-  @Roles(Role.TEACHER) //  Solo Teachers
+  @Roles(Role.TEACHER) // Solo Teachers
   assignPoints(@GetUser('id') teacherId: string, @Body() dto: AssignPointsDto) {
     return this.pointsService.assignPoints(teacherId, dto);
   }
