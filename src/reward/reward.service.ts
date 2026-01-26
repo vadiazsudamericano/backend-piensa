@@ -2,7 +2,7 @@ import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/commo
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRewardDto } from './dto/create-reward.dto';
 import { RedeemRewardDto } from './dto/redeem-reward.dto'; 
-import { UpdateRewardDto } from './dto/update-reward.dto'; // 🔥 Asegúrate de que este archivo exista
+import { UpdateRewardDto } from './dto/update-reward.dto'; 
 import { TransactionType, RedemptionStatus } from '@prisma/client';
 
 @Injectable()
@@ -24,7 +24,6 @@ export class RewardService {
         cost: dto.cost,
         subjectId: dto.subjectId,
         isActive: true,
-        // Si el docente envía stock, lo guardamos; si no, queda en 0 (ilimitado)
         stock: dto.stock || 0,
         remainingStock: dto.stock || 0,
       },
@@ -61,7 +60,7 @@ export class RewardService {
     });
   }
 
-  // 4. Eliminar Recompensa
+  // 4. Eliminar Recompensa (ACTUALIZADO: Borrado seguro en cascada)
   async deleteReward(teacherId: string, rewardId: string) {
     const reward = await this.prisma.reward.findUnique({ 
         where: { id: rewardId },
@@ -72,8 +71,17 @@ export class RewardService {
         throw new ForbiddenException('No tienes permiso');
     }
 
-    return this.prisma.reward.delete({
-      where: { id: rewardId },
+    // Ejecutamos en transacción para limpiar registros relacionados y evitar errores 500
+    return await this.prisma.$transaction(async (tx) => {
+      // a. Borrar solicitudes de canje asociadas a esta recompensa específica
+      await tx.redemptionRequest.deleteMany({
+        where: { rewardId: rewardId }
+      });
+
+      // b. Borrar la recompensa
+      return tx.reward.delete({
+        where: { id: rewardId },
+      });
     });
   }
 
@@ -84,7 +92,6 @@ export class RewardService {
     if (!reward) throw new NotFoundException('Recompensa no encontrada');
     if (!reward.isActive) throw new ForbiddenException('Esta recompensa ya no está disponible');
 
-    // Validación de stock: Si tiene límite y ya no quedan
     if (reward.stock > 0 && reward.remainingStock <= 0) {
       throw new ForbiddenException('Lo sentimos, esta recompensa se ha agotado para toda la clase.');
     }
@@ -100,7 +107,6 @@ export class RewardService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // Restar del stock disponible solo si el premio no es ilimitado
       if (reward.stock > 0) {
         await tx.reward.update({
           where: { id: reward.id },
@@ -108,13 +114,11 @@ export class RewardService {
         });
       }
 
-      // Restar puntos
       await tx.pointBalance.update({
         where: { studentId_subjectId: { studentId, subjectId: reward.subjectId } },
         data: { amount: { decrement: reward.cost } },
       });
 
-      // Crear registro en historial
       await tx.pointTransaction.create({
         data: {
           amount: -reward.cost,
@@ -125,7 +129,6 @@ export class RewardService {
         },
       });
 
-      // Crear solicitud de canje
       return tx.redemptionRequest.create({
         data: {
           studentId,
@@ -164,7 +167,7 @@ export class RewardService {
     });
   }
 
-  // 8. Aprobar o Rechazar Canje (Ajustado para devolver stock)
+  // 8. Aprobar o Rechazar Canje
   async handleRedemption(teacherId: string, requestId: string, status: RedemptionStatus) {
     const request = await this.prisma.redemptionRequest.findUnique({
       where: { id: requestId },
@@ -184,7 +187,6 @@ export class RewardService {
 
     if (status === RedemptionStatus.REJECTED) {
       return this.prisma.$transaction(async (tx) => {
-        // Devolver el stock si el canje es rechazado
         if (request.reward.stock > 0) {
           await tx.reward.update({
             where: { id: request.rewardId },
@@ -192,7 +194,6 @@ export class RewardService {
           });
         }
 
-        // Devolver puntos al alumno
         await tx.pointBalance.update({
           where: {
             studentId_subjectId: {
@@ -203,7 +204,6 @@ export class RewardService {
           data: { amount: { increment: request.reward.cost } },
         });
 
-        // Crear registro de devolución en historial
         await tx.pointTransaction.create({
           data: {
             amount: request.reward.cost,
@@ -214,7 +214,6 @@ export class RewardService {
           },
         });
 
-        // Marcar solicitud como rechazada
         return tx.redemptionRequest.update({
           where: { id: requestId },
           data: { status: RedemptionStatus.REJECTED },
@@ -235,7 +234,7 @@ export class RewardService {
     });
   }
 
-  // 🔥 10. Actualizar/Editar Recompensa
+  // 10. Actualizar/Editar Recompensa
   async updateReward(teacherId: string, rewardId: string, dto: UpdateRewardDto) {
     const reward = await this.prisma.reward.findUnique({
       where: { id: rewardId },
@@ -251,8 +250,7 @@ export class RewardService {
       data: {
         name: dto.name,
         description: dto.description,
-        cost: dto.cost,
-        // Si el profesor actualiza el stock, recalculamos el restante
+        cost: dto.cost, 
         stock: dto.stock,
         remainingStock: dto.stock, 
       },
