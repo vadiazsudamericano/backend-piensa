@@ -1,3 +1,4 @@
+// schema.prisma - ACTUALIZADO CON LOGICA DE STOCK
 generator client {
   provider = "prisma-client-js"
 }
@@ -27,23 +28,23 @@ enum RedemptionStatus {
 
 // Modelo de Usuario (Docentes y Estudiantes)
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  fullName  String
-  role      Role     @default(STUDENT)
+  id          String   @id @default(uuid())
+  email       String   @unique
+  password    String
+  fullName    String
+  role        Role     @default(STUDENT)
   
-  // 🔥 NUEVO CAMPO: Código corto único (Ej: "A7X92")
-  studentCode String? @unique  // 👈 AGREGAR ESTO
+  // Código corto único (Ej: "A7X92")
+  studentCode String? @unique 
 
-  // Perfil extra para Docentes (Cartas)
-  bio       String?
-  avatarUrl String?
+  // Perfil extra para Docentes
+  bio         String?
+  avatarUrl   String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // ... (resto de relaciones igual)
+  // Relaciones
   subjectsTeaching Subject[]         @relation("TeacherSubjects")
   enrollments      Enrollment[]
   pointBalances    PointBalance[]
@@ -84,10 +85,10 @@ model Enrollment {
   student User    @relation(fields: [studentId], references: [id])
   subject Subject @relation(fields: [subjectId], references: [id])
 
-  @@unique([studentId, subjectId]) // Evita duplicados
+  @@unique([studentId, subjectId])
 }
 
-// Saldo de Puntos (El corazón del sistema)
+// Saldo de Puntos
 model PointBalance {
   id        String @id @default(uuid())
   amount    Int    @default(0)
@@ -100,12 +101,12 @@ model PointBalance {
   @@unique([studentId, subjectId])
 }
 
-// Historial de Transacciones (Auditoría)
+// Historial de Transacciones
 model PointTransaction {
   id        String          @id @default(uuid())
   amount    Int             // Positivo = ganó, Negativo = gastó
   type      TransactionType
-  reason    String?         // Ej: "Ganador Stroop"
+  reason    String?         
 
   studentId String
   subjectId String
@@ -116,14 +117,17 @@ model PointTransaction {
 }
 
 // Recompensas Canjeables
-// ... (resto del schema igual)
-
 model Reward {
-  id          String @id @default(uuid())
-  name        String // Título
-  description String? // NUEVO: Para la descripción larga
+  id          String  @id @default(uuid())
+  name        String  // Título
+  description String? 
   cost        Int
-  isActive    Boolean @default(true) // NUEVO: Para activar/desactivar
+  isActive    Boolean @default(true) 
+
+  // 🔥 NUEVOS CAMPOS PARA EL STOCK 🔥
+  // stock = 0 se interpreta como disponibilidad ilimitada
+  stock          Int @default(0) 
+  remainingStock Int @default(0)
 
   subjectId   String
   subject     Subject @relation(fields: [subjectId], references: [id])
@@ -148,20 +152,20 @@ model RedemptionRequest {
 // Modelo para las Preguntas de Batalla
 model Question {
   id        String   @id @default(uuid())
-  text      String   // El texto de la pregunta
-  subjectId String   // A qué materia pertenece esta pregunta
+  text      String   
+  subjectId String   
   subject   Subject  @relation(fields: [subjectId], references: [id])
 
-  options   Option[] // Relación a las 4 opciones
+  options   Option[] 
 
-  @@index([subjectId]) // Optimización para buscar preguntas por materia
+  @@index([subjectId]) 
 }
 
 // Modelo para las Opciones de una Pregunta
 model Option {
   id        String   @id @default(uuid())
-  text      String   // El texto de la opción (ej: "42")
-  isCorrect Boolean  // true si es la respuesta correcta, false si no
+  text      String   
+  isCorrect Boolean  
 
   questionId String
   question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade) 

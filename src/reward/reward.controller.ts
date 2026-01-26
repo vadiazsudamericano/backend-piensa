@@ -7,6 +7,9 @@ import { RolesGuard } from '../auth/guard/roles.guard';
 import { CreateRewardDto } from './dto/create-reward.dto';
 import { RedeemRewardDto } from './dto/redeem-reward.dto';
 import { RewardService } from './reward.service';
+// Importa el UpdateRewardDto si lo creaste en un archivo aparte, 
+// o usa "any" temporalmente si quieres probar rápido.
+import { UpdateRewardDto } from './dto/update-reward.dto'; 
 
 @UseGuards(JwtGuard, RolesGuard)
 @Controller('rewards')
@@ -41,6 +44,17 @@ export class RewardController {
     @Body('status') status: RedemptionStatus,
   ) {
     return this.rewardService.handleRedemption(teacherId, requestId, status);
+  }
+
+  // 🔥 NUEVO ENDPOINT: Edición completa de la recompensa (Nombre, Costo, Stock)
+  @Patch('update/:id')
+  @Roles(Role.TEACHER)
+  editReward(
+    @GetUser('id') teacherId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateRewardDto,
+  ) {
+    return this.rewardService.updateReward(teacherId, id, dto);
   }
 
   @Patch(':id')

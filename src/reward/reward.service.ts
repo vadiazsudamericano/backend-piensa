@@ -2,13 +2,14 @@ import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/commo
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRewardDto } from './dto/create-reward.dto';
 import { RedeemRewardDto } from './dto/redeem-reward.dto'; 
+import { UpdateRewardDto } from './dto/update-reward.dto'; // 🔥 Asegúrate de que este archivo exista
 import { TransactionType, RedemptionStatus } from '@prisma/client';
 
 @Injectable()
 export class RewardService {
   constructor(private prisma: PrismaService) {}
 
-  // 1. Crear Recompensa
+  // 1. Crear Recompensa con soporte para Stock
   async createReward(teacherId: string, dto: CreateRewardDto) {
     const subject = await this.prisma.subject.findFirst({
       where: { id: dto.subjectId, teacherId },
@@ -23,6 +24,9 @@ export class RewardService {
         cost: dto.cost,
         subjectId: dto.subjectId,
         isActive: true,
+        // Si el docente envía stock, lo guardamos; si no, queda en 0 (ilimitado)
+        stock: dto.stock || 0,
+        remainingStock: dto.stock || 0,
       },
     });
   }
@@ -73,12 +77,17 @@ export class RewardService {
     });
   }
 
-  // 5. Canjear (Estudiante)
+  // 5. Canjear (Estudiante) con validación de Stock
   async redeemReward(studentId: string, dto: RedeemRewardDto) {
     const reward = await this.prisma.reward.findUnique({ where: { id: dto.rewardId } });
     
     if (!reward) throw new NotFoundException('Recompensa no encontrada');
     if (!reward.isActive) throw new ForbiddenException('Esta recompensa ya no está disponible');
+
+    // Validación de stock: Si tiene límite y ya no quedan
+    if (reward.stock > 0 && reward.remainingStock <= 0) {
+      throw new ForbiddenException('Lo sentimos, esta recompensa se ha agotado para toda la clase.');
+    }
 
     const balance = await this.prisma.pointBalance.findUnique({
       where: {
@@ -91,6 +100,14 @@ export class RewardService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      // Restar del stock disponible solo si el premio no es ilimitado
+      if (reward.stock > 0) {
+        await tx.reward.update({
+          where: { id: reward.id },
+          data: { remainingStock: { decrement: 1 } },
+        });
+      }
+
       // Restar puntos
       await tx.pointBalance.update({
         where: { studentId_subjectId: { studentId, subjectId: reward.subjectId } },
@@ -132,8 +149,6 @@ export class RewardService {
     });
   }
 
-  // 🔥 NUEVOS MÉTODOS PARA NOTIFICACIONES Y APROBACIÓN 🔥
-
   // 7. Obtener canjes pendientes para el profesor
   async getPendingRedemptions(teacherId: string) {
     return this.prisma.redemptionRequest.findMany({
@@ -149,7 +164,7 @@ export class RewardService {
     });
   }
 
-  // 8. Aprobar o Rechazar Canje
+  // 8. Aprobar o Rechazar Canje (Ajustado para devolver stock)
   async handleRedemption(teacherId: string, requestId: string, status: RedemptionStatus) {
     const request = await this.prisma.redemptionRequest.findUnique({
       where: { id: requestId },
@@ -169,6 +184,14 @@ export class RewardService {
 
     if (status === RedemptionStatus.REJECTED) {
       return this.prisma.$transaction(async (tx) => {
+        // Devolver el stock si el canje es rechazado
+        if (request.reward.stock > 0) {
+          await tx.reward.update({
+            where: { id: request.rewardId },
+            data: { remainingStock: { increment: 1 } },
+          });
+        }
+
         // Devolver puntos al alumno
         await tx.pointBalance.update({
           where: {
@@ -200,7 +223,7 @@ export class RewardService {
     }
   }
 
-  // 9. Obtener canjes del estudiante (Para su campana de notificaciones)
+  // 9. Obtener canjes del estudiante
   async getStudentRedemptions(studentId: string) {
     return this.prisma.redemptionRequest.findMany({
       where: { studentId },
@@ -208,7 +231,31 @@ export class RewardService {
         reward: { select: { name: true, subject: { select: { name: true } } } },
       },
       orderBy: { updatedAt: 'desc' },
-      take: 10, // Últimos 10 para no saturar
+      take: 10,
+    });
+  }
+
+  // 🔥 10. Actualizar/Editar Recompensa
+  async updateReward(teacherId: string, rewardId: string, dto: UpdateRewardDto) {
+    const reward = await this.prisma.reward.findUnique({
+      where: { id: rewardId },
+      include: { subject: true }
+    });
+
+    if (!reward || reward.subject.teacherId !== teacherId) {
+      throw new ForbiddenException('No tienes permiso para editar esta recompensa');
+    }
+
+    return this.prisma.reward.update({
+      where: { id: rewardId },
+      data: {
+        name: dto.name,
+        description: dto.description,
+        cost: dto.cost,
+        // Si el profesor actualiza el stock, recalculamos el restante
+        stock: dto.stock,
+        remainingStock: dto.stock, 
+      },
     });
   }
 }

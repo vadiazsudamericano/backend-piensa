@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Reward" ADD COLUMN     "remainingStock" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "stock" INTEGER NOT NULL DEFAULT 0;
