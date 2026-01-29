@@ -65,22 +65,29 @@ export class AuthService {
 
   /**
    * 🔥 EDITAR USUARIO (CORREGIDO Y OPTIMIZADO) 🔥
-   * Este método ahora es la base para que el estudiante tenga su ID y Foto
-   * siempre listos para las batallas.
+   * Se agregó mapeo explícito para evitar que los campos bio y avatarUrl queden en NULL.
    */
   async editUser(userId: string, dto: EditUserDto) {
     try {
+      // 📝 LOG DE CONTROL: Verifica esto en los logs de Railway
+      console.log(`Intentando actualizar usuario ${userId} con datos:`, dto);
+
       const user = await this.prisma.user.update({
         where: {
           id: userId,
         },
         data: {
-          ...dto,
+          // Mapeo explícito para asegurar persistencia
+          fullName: dto.fullName,
+          bio: dto.bio,
+          avatarUrl: dto.avatarUrl,
         },
       });
 
       // Borramos el password por seguridad antes de enviar la respuesta
-      delete user.password; 
+      if (user.password) {
+        delete (user as any).password;
+      }
       
       // 💡 Devolvemos el usuario completo para que el frontend actualice el localStorage
       return user;
@@ -90,6 +97,7 @@ export class AuthService {
           throw new ForbiddenException('El email ya está ocupado por otro usuario');
         }
       }
+      console.error('Error en Prisma al actualizar usuario:', error);
       throw error;
     }
   }
