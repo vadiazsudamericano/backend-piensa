@@ -18,6 +18,13 @@ interface GameRoom {
   totalAnswers: number;
   name?: string;
   usedQuestionIds: Set<string>;
+  
+  // 🔥 NUEVO: Configuración de premios reales para el podio
+  rewardPoints?: {
+    p1: number;
+    p2: number;
+    p3: number;
+  };
 
   // 🔧 FIX All-for-All
   allForAllRanking?: {
@@ -57,7 +64,8 @@ export class GameBattleGateway {
       students: room.students,
       currentQuestion: room.currentQuestion,
       mySubjects: subjects,
-      questionsPlayed: room.usedQuestionIds.size
+      questionsPlayed: room.usedQuestionIds.size,
+      rewardPoints: room.rewardPoints // 🔥 Enviamos premios al reconectar
     });
   }
 
@@ -100,7 +108,13 @@ export class GameBattleGateway {
 
   @SubscribeMessage('create-room')
   async handleCreateRoom(
-    @MessageBody() data: { teacherId: string; name?: string; customPin?: string },
+    @MessageBody() data: { 
+      teacherId: string; 
+      name?: string; 
+      customPin?: string;
+      subjectId?: string; // 🔥 Recibido del nuevo modal
+      rewardPoints?: { p1: number, p2: number, p3: number } // 🔥 Recibido del nuevo modal
+    },
     @ConnectedSocket() client: Socket
   ) {
     const roomId = data.customPin
@@ -113,7 +127,8 @@ export class GameBattleGateway {
     this.rooms.set(roomId, {
       roomId,
       teacherId: data.teacherId,
-      subjectId: '',
+      subjectId: data.subjectId || '', // 🔥 Guardamos la materia real
+      rewardPoints: data.rewardPoints || { p1: 200, p2: 100, p3: 50 }, // 🔥 Guardamos los premios
       status: 'waiting',
       students: [],
       totalAnswers: 0,
@@ -219,13 +234,16 @@ export class GameBattleGateway {
     const room = this.rooms.get(data.roomId.toUpperCase());
     if (!room) return;
 
+    // Guardamos el banco de preguntas seleccionado en el lobby
     if (data.subjectId) {
-      room.subjectId = data.subjectId;
       room.usedQuestionIds.clear();
+      (room as any).currentBankId = data.subjectId;
     }
 
+    const bankId = (room as any).currentBankId || room.subjectId;
+
     try {
-      const allQuestions = await this.gameService.getAllQuestions(room.subjectId);
+      const allQuestions = await this.gameService.getAllQuestions(bankId);
       const availableQuestions = allQuestions.filter(
         (q: any) => !room.usedQuestionIds.has(q.id)
       );
@@ -302,10 +320,11 @@ export class GameBattleGateway {
     student.hasAnswered = true;
     room.totalAnswers++;
 
+    // Validación rápida para el ranking visual del juego
     const result = await this.gameService.validateAndAssignPoints(
       data.studentName,
       data.optionId,
-      room.subjectId,
+      (room as any).currentBankId || room.subjectId,
       100
     );
 
@@ -359,17 +378,32 @@ export class GameBattleGateway {
   }
 
   @SubscribeMessage('end-battle')
-  handleEndBattle(@MessageBody() data: { roomId: string }) {
+  async handleEndBattle(@MessageBody() data: { roomId: string }) {
     const room = this.rooms.get(data.roomId.toUpperCase());
     if (!room) return;
 
     room.status = 'finished';
-    this.server.to(room.roomId).emit('game-over', {
-      winners: [...room.students]
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 3)
-    });
+    const winners = [...room.students]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
 
+    // 🔥 FIX LÍNEA 395: Persistencia real de puntos antes de borrar la sala
+    if (room.subjectId && room.rewardPoints) {
+      try {
+        await this.gameService.assignPodiumRewards(
+          winners.map(w => w.name), 
+          room.subjectId, 
+          room.rewardPoints
+        );
+        console.log(`✅ Premios reales asignados a materia ${room.subjectId}`);
+      } catch (e) {
+        console.error("❌ Error en persistencia de premios:", e.message);
+      }
+    }
+
+    this.server.to(room.roomId).emit('game-over', { winners });
+
+    // Eliminación final de la sala en memoria de Railway
     this.rooms.delete(room.roomId);
   }
-}
+} 

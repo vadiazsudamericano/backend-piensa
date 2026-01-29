@@ -40,7 +40,7 @@ export class GameBattleService {
       answers: string[]; 
       correct_answer_index: number 
     }[];
-    cycle?: string; // 👈 1. ACEPTAMOS EL PARÁMETRO OPCIONAL AQUÍ
+    cycle?: string; 
   }) {
     return await this.prisma.$transaction(async (tx) => {
       // 1. Crear el Banco
@@ -48,7 +48,6 @@ export class GameBattleService {
         data: {
           name: data.name,
           teacher: { connect: { id: data.teacherId } },
-          // 👇 2. USAMOS EL VALOR QUE LLEGA, O 'Ciclo Actual' POR DEFECTO
           cycle: data.cycle || 'Ciclo Actual', 
           year: new Date().getFullYear(),
           joinCode: Math.random().toString(36).substring(2, 8).toUpperCase(),
@@ -75,7 +74,7 @@ export class GameBattleService {
     });
   }
 
-  // 🔥 NUEVO: Obtener TODAS las preguntas (Necesario para el modo secuencial)
+  // Obtener TODAS las preguntas
   async getAllQuestions(subjectId: string) {
     if (!subjectId) return [];
 
@@ -90,7 +89,7 @@ export class GameBattleService {
     }
   }
 
-  // Obtener pregunta aleatoria (Legacy / Utilidad)
+  // Obtener pregunta aleatoria
   async getRandomQuestion(subjectId: string) {
     const questions = await this.prisma.question.findMany({
       where: { subjectId },
@@ -104,7 +103,7 @@ export class GameBattleService {
     return questions[Math.floor(Math.random() * questions.length)];
   }
 
-  // Validar respuesta y sumar puntos
+  // Validar respuesta y sumar puntos (Juego rápido)
   async validateAndAssignPoints(studentName: string, optionId: string, subjectId: string, points: number) {
     const option = await this.prisma.option.findUnique({
       where: { id: optionId },
@@ -112,10 +111,10 @@ export class GameBattleService {
     });
 
     if (!option || !option.isCorrect) return { success: false };
- 
+
     const student = await this.prisma.user.findFirst({ where: { fullName: studentName } });
-    if (!student) return { success: false }; // O true con 0 puntos si es invitado
- 
+    if (!student) return { success: false };
+
     const updatedBalance = await this.prisma.pointBalance.upsert({
       where: {
         studentId_subjectId: { studentId: student.id, subjectId }
@@ -125,5 +124,59 @@ export class GameBattleService {
     });
 
     return { success: true, totalPoints: updatedBalance.amount };
+  }
+
+  // 🔥 NUEVO: Asignación real de premios al podio (Software Aplicativo)
+  async assignPodiumRewards(
+    winnerNames: string[], 
+    subjectId: string, 
+    rewards: { p1: number, p2: number, p3: number }
+  ) {
+    const rewardAmounts = [rewards.p1, rewards.p2, rewards.p3];
+
+    return await this.prisma.$transaction(async (tx) => {
+      for (let i = 0; i < winnerNames.length; i++) {
+        const studentName = winnerNames[i];
+        const amount = rewardAmounts[i];
+
+        if (!amount || amount <= 0) continue;
+
+        // 1. Buscar estudiante por nombre completo
+        const student = await tx.user.findFirst({
+          where: { 
+            fullName: studentName,
+            role: 'STUDENT'
+          }
+        });
+
+        if (!student) {
+          console.warn(`⚠️ Estudiante no encontrado: ${studentName}`);
+          continue;
+        }
+
+        // 2. Actualizar balance real en la materia seleccionada
+        await tx.pointBalance.upsert({
+          where: {
+            studentId_subjectId: {
+              studentId: student.id,
+              subjectId: subjectId
+            }
+          },
+          update: { amount: { increment: amount } },
+          create: { studentId: student.id, subjectId, amount: amount }
+        });
+
+        // 3. Registrar transacción para el historial del alumno
+        await tx.pointTransaction.create({
+          data: {
+            amount: amount,
+            type: 'EARNED',
+            reason: `Premio Batalla: ${i + 1}º Lugar`,
+            studentId: student.id,
+            subjectId: subjectId
+          }
+        });
+      }
+    });
   }
 }
