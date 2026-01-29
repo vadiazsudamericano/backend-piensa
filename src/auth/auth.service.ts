@@ -5,7 +5,7 @@ import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthDto } from './dto/auth.dto';
 import { CreateUserDto } from './dto/create-user.dto';
-import { EditUserDto } from './dto/edit-user.dto'; // 👈 Asegúrate de tener este import
+import { EditUserDto } from './dto/edit-user.dto'; 
 import * as bcrypt from 'bcrypt';
 import { Role } from '@prisma/client';
 
@@ -64,22 +64,34 @@ export class AuthService {
   }
 
   /**
-   * 🔥 EDITAR USUARIO (CORREGIDO) 🔥
+   * 🔥 EDITAR USUARIO (CORREGIDO Y OPTIMIZADO) 🔥
+   * Este método ahora es la base para que el estudiante tenga su ID y Foto
+   * siempre listos para las batallas.
    */
   async editUser(userId: string, dto: EditUserDto) {
-    const user = await this.prisma.user.update({
-      where: {
-        id: userId,
-      },
-      data: {
-        ...dto,
-      },
-    });
+    try {
+      const user = await this.prisma.user.update({
+        where: {
+          id: userId,
+        },
+        data: {
+          ...dto,
+        },
+      });
 
-    // 🔴 ELIMINADO: delete user.hash; (Esto causaba el error)
-    delete user.password; // Solo borramos el password para no devolverlo
-    
-    return user;
+      // Borramos el password por seguridad antes de enviar la respuesta
+      delete user.password; 
+      
+      // 💡 Devolvemos el usuario completo para que el frontend actualice el localStorage
+      return user;
+    } catch (error) {
+      if (error instanceof PrismaClientKnownRequestError) {
+        if (error.code === 'P2002') {
+          throw new ForbiddenException('El email ya está ocupado por otro usuario');
+        }
+      }
+      throw error;
+    }
   }
 
   // --- TOKEN ---
