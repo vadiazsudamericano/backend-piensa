@@ -1,0 +1,7 @@
+{
+  "name": "wayra-kichwa",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "react-vite"
+}
