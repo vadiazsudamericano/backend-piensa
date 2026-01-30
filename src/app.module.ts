@@ -6,6 +6,10 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
+// 🔥 IMPORTACIONES PARA ARCHIVOS ESTÁTICOS
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
+
 // Importaciones de tus módulos
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
@@ -24,9 +28,17 @@ import { GameBattleService } from './game-battle/game-battle.service';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    
+    // 🔥 CONFIGURACIÓN PARA SERVIR FOTOS (URL REAL)
+    // Esto hace que lo que subas a /uploads sea accesible vía HTTP
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'uploads'), 
+      serveRoot: '/uploads', 
+    }),
+
     PrismaModule,
     AuthModule,
-    UserModule, // 👈 2. AGREGADO AQUÍ
+    UserModule,
     SubjectModule,
     EnrollmentModule,
     PointsModule,

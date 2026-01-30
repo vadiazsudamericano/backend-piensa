@@ -9,6 +9,7 @@ export class EditUserDto {
   @IsOptional()
   bio?: string;
 
+  // 🔥 Agregamos esto para que la validación no rebote el campo si viene del frontend
   @IsString()
   @IsOptional()
   avatarUrl?: string;
