@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums para roles y tipos de transacción
+enum Role {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+enum TransactionType {
+  EARNED   // Puntos ganados
+  REDEEMED // Puntos gastados
+}
+
+enum RedemptionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Modelo de Usuario (Docentes y Estudiantes)
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  fullName  String
+  role      Role     @default(STUDENT)
+
+  // Perfil extra para Docentes (Cartas)
+  bio       String?
+  avatarUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones Inversas
+  subjectsTeaching Subject[]         @relation("TeacherSubjects")
+  enrollments      Enrollment[]
+  pointBalances    PointBalance[]
+  transactions     PointTransaction[]
+  redemptions      RedemptionRequest[]
+}
+
+// Materias/Clases
+model Subject {
+  id        String   @id @default(uuid())
+  name      String
+  cycle     String   // Ej: "Ciclo 1"
+  year      Int
+  joinCode  String   @unique // Código único (Ej: "X7Y2")
+
+  teacherId String
+  teacher   User     @relation("TeacherSubjects", fields: [teacherId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones Inversas
+  enrollments   Enrollment[]
+  pointBalances PointBalance[]
+  transactions  PointTransaction[]
+  rewards       Reward[]
+  questions     Question[] // <-- ¡AQUÍ ESTÁ LA LÍNEA QUE FALTABA!
+}
+
+// Inscripciones (Estudiante <-> Materia)
+model Enrollment {
+  id        String   @id @default(uuid())
+  studentId String
+  subjectId String
+  joinedAt  DateTime @default(now())
+
+  student User    @relation(fields: [studentId], references: [id])
+  subject Subject @relation(fields: [subjectId], references: [id])
+
+  @@unique([studentId, subjectId]) // Evita duplicados
+}
+
+// Saldo de Puntos (El corazón del sistema)
+model PointBalance {
+  id        String @id @default(uuid())
+  amount    Int    @default(0)
+
+  studentId String
+  subjectId String
+  student   User    @relation(fields: [studentId], references: [id])
+  subject   Subject @relation(fields: [subjectId], references: [id])
+
+  @@unique([studentId, subjectId])
+}
+
+// Historial de Transacciones (Auditoría)
+model PointTransaction {
+  id        String          @id @default(uuid())
+  amount    Int             // Positivo = ganó, Negativo = gastó
+  type      TransactionType
+  reason    String?         // Ej: "Ganador Stroop"
+
+  studentId String
+  subjectId String
+  student   User    @relation(fields: [studentId], references: [id])
+  subject   Subject @relation(fields: [subjectId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+// Recompensas Canjeables
+model Reward {
+  id        String @id @default(uuid())
+  name      String // Ej: "+2 Pts en Tarea"
+  cost      Int
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id])
+
+  redemptions RedemptionRequest[]
+}
+
+// Solicitudes de Canje
+model RedemptionRequest {
+  id     String           @id @default(uuid())
+  status RedemptionStatus @default(PENDING)
+
+  studentId String
+  rewardId  String
+  student   User   @relation(fields: [studentId], references: [id])
+  reward    Reward @relation(fields: [rewardId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Modelo para las Preguntas de Batalla
+model Question {
+  id        String   @id @default(uuid())
+  text      String   // El texto de la pregunta
+  subjectId String   // A qué materia pertenece esta pregunta
+  subject   Subject  @relation(fields: [subjectId], references: [id])
+
+  options   Option[] // Relación a las 4 opciones
+
+  @@index([subjectId]) // Optimización para buscar preguntas por materia
+}
+
+// Modelo para las Opciones de una Pregunta
+model Option {
+  id         String   @id @default(uuid())
+  text       String   // El texto de la opción (ej: "42")
+  isCorrect  Boolean  // true si es la respuesta correcta, false si no
+
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade) // Si se borra la pregunta, se borran las opciones
+
+  @@index([questionId])
+}

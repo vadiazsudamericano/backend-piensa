@@ -1,0 +1,94 @@
+/* src/theme/variables.css */
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap');
+
+:root {
+  /* Fondo Pastel Dark - Menos agresivo */
+  --wayra-bg: #1e2124;          /* Gris oscuro pastel */
+  --wayra-bg-card: #282b30;     /* Capa superior para tarjetas */
+  --wayra-border: #36393e;      /* Bordes suaves */
+  
+  /* Colores de Acento Pastel */
+  --wayra-primary: #7289da;     /* Un azul/lila pastel (estilo Discord/moderno) */
+  --wayra-primary-dark: #5b6eae;
+  
+  --wayra-mint: #a3e4d7;        /* Verde menta suave en lugar del chillón */
+  --wayra-mint-dark: #76d7c4;
+  
+  --wayra-text: #ececec;
+  --wayra-text-dim: #94a3b8;
+
+  --wayra-locked: #2f3136;
+  --wayra-bg-top: #b2e2e2;
+  --wayra-bg-bottom: #326262;
+  
+  --wayra-mint-pastel: #a2d9ce;
+  --wayra-purple-pastel: #c3aef5;
+  
+  --wayra-glass: rgba(255, 255, 255, 0.2);
+  --wayra-glass-border: rgba(255, 255, 255, 0.4);
+  
+  --ion-font-family: 'Nunito', sans-serif;
+}
+
+body {
+  background-color: var(--wayra-bg);
+  color: var(--wayra-text);
+  font-family: 'Nunito', sans-serif;
+}
+
+/* --- CLASES DE UTILIDAD OPTIMIZADAS --- */
+
+/* Fondo con Gradiente (Para pantallas de Login) */
+.wayra-gradient-bg {
+  background: linear-gradient(135deg, #1F2E35 0%, #131F24 100%);
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: -1;
+}
+
+/* Efecto de Botón 3D (Wayra Style) */
+.wayra-button-3d {
+  --background: var(--wayra-green);
+  --border-radius: 16px;
+  --box-shadow: 0 5px 0 var(--wayra-green-dark);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transition: all 0.1s ease;
+  margin-bottom: 5px;
+}
+
+.wayra-button-3d:active {
+  transform: translateY(4px);
+  --box-shadow: 0 1px 0 var(--wayra-green-dark);
+}
+
+/* Burbuja del Jaguar (Modificada para Dark Mode) */
+.jaguar-bubble {
+  background: var(--wayra-bg-light);
+  border: 2px solid var(--wayra-border);
+  border-radius: 18px;
+  padding: 12px 16px;
+  position: relative;
+  color: white;
+  filter: drop-shadow(0 4px 0 rgba(0,0,0,0.3));
+}
+
+.jaguar-bubble::after {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 50%;
+  transform: translateY(-50%);
+  border-width: 10px 10px 10px 0;
+  border-style: solid;
+  border-color: transparent var(--wayra-bg-light) transparent transparent;
+}
+
+/* Barra de progreso (Brillante sobre oscuro) */
+.custom-progress {
+  height: 16px;
+  border-radius: 10px;
+  --buffer-background: var(--wayra-border);
+  --progress-background: var(--wayra-yellow);
+}
