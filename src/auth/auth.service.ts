@@ -64,24 +64,28 @@ export class AuthService {
   }
 
   /**
-   * 🔥 EDITAR USUARIO (CORREGIDO Y OPTIMIZADO) 🔥
-   * Se agregó mapeo explícito para evitar que los campos bio y avatarUrl queden en NULL.
+   * 🔥 EDITAR USUARIO (OPTIMIZACIÓN FINAL) 🔥
+   * Se añade limpieza de datos para evitar que los 'undefined' borren info en la DB.
    */
   async editUser(userId: string, dto: EditUserDto) {
     try {
-      // 📝 LOG DE CONTROL: Verifica esto en los logs de Railway
-      console.log(`Intentando actualizar usuario ${userId} con datos:`, dto);
+      console.log(`--- Iniciando persistencia en Prisma para usuario ${userId} ---`);
+      
+      // Creamos un objeto de actualización limpio
+      const updateData: any = {};
+      
+      // Solo agregamos al objeto de Prisma si el dato no es undefined ni null
+      if (dto.fullName !== undefined) updateData.fullName = dto.fullName;
+      if (dto.bio !== undefined) updateData.bio = dto.bio;
+      if (dto.avatarUrl !== undefined) updateData.avatarUrl = dto.avatarUrl;
+
+      console.log('Objeto final que se enviará a la base de datos:', updateData);
 
       const user = await this.prisma.user.update({
         where: {
           id: userId,
         },
-        data: {
-          // Mapeo explícito para asegurar persistencia
-          fullName: dto.fullName,
-          bio: dto.bio,
-          avatarUrl: dto.avatarUrl,
-        },
+        data: updateData, // Usamos el objeto limpio
       });
 
       // Borramos el password por seguridad antes de enviar la respuesta
@@ -89,7 +93,7 @@ export class AuthService {
         delete (user as any).password;
       }
       
-      // 💡 Devolvemos el usuario completo para que el frontend actualice el localStorage
+      console.log('✅ Usuario actualizado con éxito en la base de datos');
       return user;
     } catch (error) {
       if (error instanceof PrismaClientKnownRequestError) {
@@ -97,7 +101,7 @@ export class AuthService {
           throw new ForbiddenException('El email ya está ocupado por otro usuario');
         }
       }
-      console.error('Error en Prisma al actualizar usuario:', error);
+      console.error('❌ Error crítico en Prisma al actualizar usuario:', error);
       throw error;
     }
   }

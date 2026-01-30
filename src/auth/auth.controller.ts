@@ -11,8 +11,8 @@ import {
   UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer'; // 🔥 Agregado para persistencia en disco
-import { extname } from 'path'; // 🔥 Agregado para manejar extensiones (.jpg, .png)
+import { diskStorage } from 'multer'; 
+import { extname } from 'path'; 
 import { AuthService } from './auth.service';
 import { AuthDto } from './dto/auth.dto';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -44,16 +44,15 @@ export class AuthController {
 
   /**
    * 🔥 CORRECCIÓN FINAL: 
-   * Configuración de almacenamiento para convertir archivos locales en URLs públicas.
+   * Se procesa el archivo y se asegura que el DTO reciba la información del FormData.
    */
   @UseGuards(JwtGuard)
   @Patch('me')
   @UseInterceptors(
     FileInterceptor('avatar', {
       storage: diskStorage({
-        destination: './uploads', // Carpeta física en Railway
+        destination: './uploads', 
         filename: (req, file, cb) => {
-          // Generamos un nombre único para evitar colisiones
           const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
           cb(null, `${file.fieldname}-${uniqueSuffix}${extname(file.originalname)}`);
         },
@@ -65,11 +64,18 @@ export class AuthController {
     @Body() dto: EditUserDto,
     @UploadedFile() file?: any
   ) {
+    // 🔍 LOG DE DEPURACIÓN PARA RAILWAY
+    console.log('--- Datos recibidos en el Controller ---');
+    console.log('UserId:', userId);
+    console.log('DTO Cuerpo:', dto);
+    console.log('Archivo:', file ? file.filename : 'Ninguno');
+
     /**
      * 📸 CONSTRUCCIÓN DE LA URL REAL:
-     * Si el estudiante sube un archivo, transformamos la ruta del disco en un link HTTP.
+     * Transformamos la ruta del disco en un link HTTP accesible desde la APK.
      */
     if (file) {
+      // Asegúrate de tener configurado SERVER_URL en Railway con https://
       const serverUrl = process.env.SERVER_URL || 'http://localhost:3000';
       dto.avatarUrl = `${serverUrl}/uploads/${file.filename}`;
     }

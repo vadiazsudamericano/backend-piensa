@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsUrl } from 'class-validator';
+import { IsOptional, IsString } from 'class-validator';
 
 export class EditUserDto {
   @IsString()
@@ -9,7 +9,8 @@ export class EditUserDto {
   @IsOptional()
   bio?: string;
 
-  @IsUrl()
+  // 🔥 Cambiado a IsString para evitar que la validación rebote la petición
+  @IsString()
   @IsOptional()
   avatarUrl?: string;
 }
